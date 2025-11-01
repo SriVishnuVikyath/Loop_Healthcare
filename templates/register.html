@@ -1,0 +1,64 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h2>Register a New Account</h2>
+    <form method="POST">
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <div class="form-group">
+            <label for="role">Register as:</label>
+            <select id="role" name="role" onchange="toggleDoctorFields(this.value)">
+                <option value="patient">Patient</option>
+                <option value="doctor">Doctor</option>
+                <option value="insurance">Insurance</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="full_name" id="full_name_label">Full Name</label>
+            <input type="text" id="full_name" name="full_name" required>
+        </div>
+        <div class="form-group">
+            <label for="phone">Phone Number</label>
+            <input type="tel" id="phone" name="phone">
+        </div>
+        <div class="form-group">
+            <label for="address" id="address_label">Address</label>
+            <input type="text" id="address" name="address">
+        </div>
+        <div class="form-group">
+            <label for="pincode">Pincode</label>
+            <input type="text" id="pincode" name="pincode">
+        </div>
+        <div class="form-group" id="specialty-field" style="display: none;">
+            <label for="specialty">Specialty</label>
+            <input type="text" id="specialty" name="specialty" placeholder="e.g., Cardiologist">
+        </div>
+        <button type="submit" class="btn">Register</button>
+    </form>
+
+    <script>
+        function toggleDoctorFields(role) {
+            const specialtyField = document.getElementById('specialty-field');
+            const fullNameLabel = document.getElementById('full_name_label');
+            const addressLabel = document.getElementById('address_label');
+            if (role === 'doctor') {
+                specialtyField.style.display = 'block';
+                fullNameLabel.textContent = 'Full Name';
+                addressLabel.textContent = 'Practice Address';
+            } else if (role === 'insurance') {
+                specialtyField.style.display = 'none';
+                fullNameLabel.textContent = 'Company Name';
+                addressLabel.textContent = 'Company Address';
+            } else {
+                specialtyField.style.display = 'none';
+                fullNameLabel.textContent = 'Full Name';
+                addressLabel.textContent = 'Address';
+            }
+        }
+    </script>
+{% endblock %}

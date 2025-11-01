@@ -1,0 +1,59 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Doctor Dashboard</h1>
+    <p>Welcome, <b>{{ g.profile.full_name }}</b> ({{ current_user.email }})</p>
+    <p>Your specialty: {{ g.profile.specialty }}</p>
+
+    <div class="card">
+        <div class="card-header">Pending Appointments</div>
+        {% for apt in pending_apts %}
+            <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
+                <div>
+                    <b>{{ apt.patient.full_name }}</b><br>
+                    {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}
+                </div>
+                <div>
+                    <a href="{{ url_for('appointment_action', appointment_id=apt.id, action='confirm') }}" class="btn" style="margin-right: 5px;">Confirm</a>
+                    <a href="{{ url_for('appointment_action', appointment_id=apt.id, action='cancel') }}" class="btn-danger" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">Cancel</a>
+                </div>
+            </div>
+        {% else %}
+            <p>No pending appointments.</p>
+        {% endfor %}
+    </div>
+
+    <div class="card">
+        <div class="card-header">Confirmed Appointments</div>
+        {% for apt in confirmed_apts %}
+             <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
+                <div>
+                    <b>{{ apt.patient.full_name }}</b><br>
+                    {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}
+                </div>
+                <div>
+                    <a href="{{ url_for('update_record', patient_id=apt.patient.id) }}" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px; margin-right: 5px;">View/Add Record</a>
+                    <a href="{{ url_for('appointment_action', appointment_id=apt.id, action='complete') }}" class="btn">Mark as Completed</a>
+                </div>
+            </div>
+        {% else %}
+            <p>No confirmed appointments.</p>
+        {% endfor %}
+    </div>
+
+    <div class="card">
+        <div class="card-header">Completed Appointments</div>
+        {% for apt in completed_apts %}
+             <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
+                <div>
+                    <b>{{ apt.patient.full_name }}</b><br>
+                    {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}
+                </div>
+                <div>
+                    <a href="{{ url_for('update_record', patient_id=apt.patient.id) }}" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">View History</a>
+                </div>
+            </div>
+        {% else %}
+            <p>No completed appointments.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

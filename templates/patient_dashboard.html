@@ -1,0 +1,63 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Patient Dashboard</h1>
+    <p>Welcome, <b>{{ g.profile.full_name }}</b> ({{ current_user.email }})</p>
+
+    <hr>
+    
+    <!-- Doctor Search -->
+    <div class="card">
+        <div class="card-header">Find a Doctor</div>
+        <form action="{{ url_for('search_doctors') }}" method="POST">
+            <div class="form-group">
+                <label for="specialty">Specialty</label>
+                <input type="text" id="specialty" name="specialty" placeholder="e.g., Cardiologist">
+            </div>
+            <div class="form-group">
+                <label for="pincode">Pincode</label>
+                <input type="text" id="pincode" name="pincode" placeholder="e.g., 10001">
+            </div>
+            <button type="submit" class="btn">Search</button>
+        </form>
+    </div>
+    
+    <!-- Medical Record Timeline -->
+    <div class="card">
+        <div class="card-header">Your Medical Timeline</div>
+        <ul class="timeline">
+            {% for record in timeline %}
+                <li class="timeline-item">
+                    <div class="date">{{ record.created_at.strftime('%Y-%m-%d %I:%M %p') }}</div>
+                    <h4>Visit with {{ record.doctor.full_name }} ({{ record.doctor.specialty }})</h4>
+                    <p><b>Diagnosis:</b> {{ record.diagnosis }}</p>
+                    <p><b>Notes:</b> {{ record.notes }}</p>
+                    <p><b>Prescription:</b> {{ record.prescription }}</p>
+                </li>
+            {% else %}
+                <li>No medical records found.</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <!-- Permission Manager -->
+    <div class="card">
+        <div class="card-header">Manage Doctor Permissions</div>
+        <p>Select which doctors are allowed to view your *entire* medical history.</p>
+        <form action="{{ url_for('manage_permissions') }}" method="POST">
+            <div class="form-group">
+                {% for doc in doctors %}
+                    <div>
+                        <input type="checkbox" name="doctor_ids" id="doc_{{ doc.id }}" value="{{ doc.id }}"
+                            {% if doc.id in permissioned_doctors %}checked{% endif %}>
+                        <label for="doc_{{ doc.id }}">{{ doc.full_name }} ({{ doc.specialty }})</label>
+                    </div>
+                {% else %}
+                    <p>You have not had appointments with any doctors yet.</p>
+                {% endfor %}
+            </div>
+            {% if doctors %}
+                <button type="submit" class="btn-secondary">Update Permissions</button>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

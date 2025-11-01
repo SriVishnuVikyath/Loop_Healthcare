@@ -1,0 +1,42 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Doctor Search Results</h1>
+    <p>Showing results for: 
+        {% if specialty %}<b>Specialty:</b> {{ specialty }} {% endif %}
+        {% if pincode %}<b>Pincode:</b> {{ pincode }}{% endif %}
+    </p>
+
+    <a href="{{ url_for('patient_dashboard') }}" class="btn-secondary" style="text-decoration: none; padding: 10px 15px; border-radius: 6px; margin-bottom: 20px; display: inline-block;">&larr; Back to Dashboard</a>
+
+    <div class="results-list">
+        {% for row in results %}
+            {% set doctor = row[0] %}
+            {% set avg_overall = row[1] %}
+            {% set avg_cost = row[2] %}
+            {% set avg_hospitality = row[3] %}
+            <div class="card">
+                <div class="d-flex justify-between align-center">
+                    <div>
+                        <h3>{{ doctor.full_name }}</h3>
+                        <p><b>Specialty:</b> {{ doctor.specialty }}</p>
+                        <p><b>Address:</b> {{ doctor.practice_address }}, {{ doctor.pincode }}</p>
+                        <p><b>Phone:</b> {{ doctor.phone }}</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                        <p>
+                            <b>Overall Rating:</b> {{ "%.1f"|format(avg_overall) if avg_overall else 'N/A' }} / 10
+                            <br>
+                            <b>Avg. Cost:</b> {{ "%.1f"|format(avg_cost) if avg_cost else 'N/A' }} / 10
+                            <br>
+                            <b>Hospitality:</b> {{ "%.1f"|format(avg_hospitality) if avg_hospitality else 'N/A' }} / 10
+                        </p>
+                    </div>
+                    <div>
+                        <a href="{{ url_for('book_appointment', doctor_id=doctor.id) }}" class="btn">Book Appointment</a>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <p>No doctors found matching your criteria.</p>
+        {% endfor %}
+    </div>
+{% endblock %}

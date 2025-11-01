@@ -1,0 +1,16 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Book Appointment</h1>
+    <p>You are booking an appointment with:</p>
+    <h2>{{ doctor.full_name }}</h2>
+    <p><b>Specialty:</b> {{ doctor.specialty }}</p>
+    <p><b>Address:</b> {{ doctor.practice_address }}</p>
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="appointment_time">Select Date and Time</label>
+            <input type="datetime-local" id="appointment_time" name="appointment_time" required>
+        </div>
+        <button type="submit" class="btn">Request Appointment</button>
+    </form>
+{% endblock %}

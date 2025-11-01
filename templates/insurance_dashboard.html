@@ -1,0 +1,11 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Insurance Dashboard</h1>
+    <p>Welcome, <b>{{ g.profile.company_name }}</b> ({{ current_user.email }})</p>
+
+    <div class="card">
+        <div class="card-header">Insurance Matching Algorithm</div>
+        <p>This is where you would build the UI for your insurance matching and recommendation algorithm.</p>
+        <p>You could, for example, search for patients based on their (anonymized) medical history or demographic data to suggest plans.</p>
+    </div>
+{% endblock %}
