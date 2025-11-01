@@ -1,0 +1,48 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Leave a Review</h1>
+    <p>You are reviewing your completed appointment with:</p>
+    <h2>{{ doctor.full_name }} ({{ doctor.specialty }})</h2>
+
+    <style>
+        .rating-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 400px;
+        }
+        .rating-group label {
+            font-weight: 600;
+        }
+        .rating-group input {
+            width: 80px;
+        }
+    </style>
+
+    <div class="card">
+        <form method="POST">
+            <div class="form-group rating-group">
+                <label for="overall_rating">Overall Rating (1-10)</label>
+                <input type="number" id="overall_rating" name="overall_rating" min="1" max="10" required>
+            </div>
+            <div class="form-group rating-group">
+                <label for="cost_rating">Cost Rating (1-10)</label>
+                <input type="number" id="cost_rating" name="cost_rating" min="1" max="10" required>
+            </div>
+            <div class="form-group rating-group">
+                <label for="hospitality_rating">Hospitality Rating (1-10)</label>
+                <input type="number" id="hospitality_rating" name="hospitality_rating" min="1" max="10" required>
+            </div>
+            <div class="form-group rating-group">
+                <label for="med_rec_rating">Medicine Rec. Rating (1-10)</label>
+                <input type="number" id="med_rec_rating" name="med_rec_rating" min="1" max="10" required>
+            </div>
+            <div class="form-group">
+                <label for="comment">Comment (optional)</label>
+                <textarea id="comment" name="comment" rows="5"></textarea>
+            </div>
+            <button type="submit" class="btn">Submit Review</button>
+        </form>
+    </div>
+
+{% endblock %}

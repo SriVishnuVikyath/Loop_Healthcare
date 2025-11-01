@@ -1,5 +1,6 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, g
+import uuid
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, g, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_bcrypt import Bcrypt
@@ -14,6 +15,13 @@ app.config['SECRET_KEY'] = 'a_very_secret_key_that_you_should_change'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'site.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# --- File Upload Configuration ---
+app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads')
+app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'pdf'}
+# Create the upload folder if it doesn't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+
 # --- Initialize Extensions ---
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -23,12 +31,13 @@ login_manager.login_message_category = 'info'
 
 # --- Database Models ---
 
-# Association table for patient-doctor permissions
+# (Patient-Doctor Permissions Table is unchanged)
 patient_doctor_permissions = db.Table('patient_doctor_permissions',
     db.Column('patient_id', db.Integer, db.ForeignKey('patient_profile.id'), primary_key=True),
     db.Column('doctor_id', db.Integer, db.ForeignKey('doctor_profile.id'), primary_key=True)
 )
 
+# (User Model is unchanged)
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -54,7 +63,9 @@ class PatientProfile(db.Model):
     appointments = db.relationship('Appointment', backref='patient', lazy='dynamic', foreign_keys='Appointment.patient_id')
     reviews = db.relationship('DoctorReview', backref='patient', lazy='dynamic', foreign_keys='DoctorReview.patient_id')
     
-    # Many-to-Many relationship for permissions
+    # NEW: Relationship to MedicalFile
+    files = db.relationship('MedicalFile', backref='patient', lazy='dynamic', foreign_keys='MedicalFile.patient_id')
+    
     permitted_doctors = db.relationship('DoctorProfile', secondary=patient_doctor_permissions,
         back_populates='permitted_patients')
 
@@ -71,10 +82,13 @@ class DoctorProfile(db.Model):
     appointments = db.relationship('Appointment', backref='doctor', lazy='dynamic', foreign_keys='Appointment.doctor_id')
     reviews = db.relationship('DoctorReview', backref='doctor_profile', lazy='dynamic', foreign_keys='DoctorReview.doctor_id')
     
-    # Many-to-Many relationship for permissions
+    # NEW: Relationship to MedicalFile
+    files_written = db.relationship('MedicalFile', backref='doctor', lazy='dynamic', foreign_keys='MedicalFile.doctor_id')
+    
     permitted_patients = db.relationship('PatientProfile', secondary=patient_doctor_permissions,
         back_populates='permitted_doctors')
 
+# (InsuranceProfile Model is unchanged)
 class InsuranceProfile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_name = db.Column(db.String(100), nullable=False, default='Unnamed Company')
@@ -83,6 +97,7 @@ class InsuranceProfile(db.Model):
     pincode = db.Column(db.String(10))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
 
+# (MedicalRecord Model is unchanged)
 class MedicalRecord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     diagnosis = db.Column(db.Text, nullable=False)
@@ -93,6 +108,7 @@ class MedicalRecord(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
 
+# (Appointment Model is unchanged)
 class Appointment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     appointment_time = db.Column(db.DateTime, nullable=False)
@@ -101,6 +117,7 @@ class Appointment(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
 
+# (DoctorReview Model is unchanged)
 class DoctorReview(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cost_rating = db.Column(db.Integer, nullable=False) # 1-10
@@ -108,26 +125,38 @@ class DoctorReview(db.Model):
     med_rec_rating = db.Column(db.Integer, nullable=False) # 1-10
     overall_rating = db.Column(db.Integer, nullable=False) # 1-10
     comment = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
     
     patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
-    # Unique constraint to ensure one review per patient per doctor
     __table_args__ = (db.UniqueConstraint('patient_id', 'doctor_id', name='_patient_doctor_review_uc'),)
 
 
-# --- Flask-Login Helper ---
+# --- NEW MODEL ---
+class MedicalFile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    # The secure, unique filename stored on the server (e.g., a UUID)
+    filename = db.Column(db.String(256), unique=True, nullable=False)
+    # The original filename the user uploaded (e.g., "lab_report.pdf")
+    original_filename = db.Column(db.String(256), nullable=False)
+    description = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+    
+    patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
+    doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
+
+
+# --- Flask-Login Helper & Role Decorators (Unchanged) ---
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# --- Role-Specific Decorators ---
 def role_required(role_name):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if not current_user.is_authenticated or current_user.role != role_name:
                 abort(403)
-            # Store the correct profile in the 'g' object for easy access in templates
             if current_user.role == 'patient':
                 g.profile = current_user.patient_profile
             elif current_user.role == 'doctor':
@@ -138,7 +167,13 @@ def role_required(role_name):
         return decorated_function
     return decorator
 
-# --- General Routes ---
+# --- File Upload Helper ---
+def allowed_file(filename):
+    """Checks if a filename has an allowed extension."""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+# --- General Routes (Unchanged) ---
 @app.route("/")
 def home():
     return render_template('home.html')
@@ -165,7 +200,7 @@ def register():
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         new_user = User(email=email, password_hash=hashed_password, role=role)
         db.session.add(new_user)
-        db.session.commit() # Commit to get new_user.id
+        db.session.commit()
 
         if role == 'patient':
             profile = PatientProfile(full_name=full_name, phone=phone, address=address, pincode=pincode, user_id=new_user.id)
@@ -181,7 +216,7 @@ def register():
             return redirect(url_for('login'))
         else:
             flash('Error creating profile.', 'danger')
-            db.session.delete(new_user) # Rollback user creation
+            db.session.delete(new_user)
             db.session.commit()
             return redirect(url_for('register'))
 
@@ -211,7 +246,7 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('home'))
 
-# --- Dashboard Routes ---
+# --- Dashboard Route (Unchanged) ---
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -224,22 +259,42 @@ def dashboard():
     else:
         return "Error: Unknown user role.", 403
 
-# --- Patient Routes ---
+# --- Patient Routes (UPDATED) ---
 @app.route("/patient_dashboard")
 @login_required
 @role_required('patient')
 def patient_dashboard():
-    # Medical Record Timeline
-    timeline = g.profile.records.order_by(MedicalRecord.created_at.desc()).all()
+    # --- UPDATED: Combined Medical Timeline ---
+    records = g.profile.records.all()
+    files = g.profile.files.all()
+    # Combine and sort records and files by creation date
+    timeline_items = sorted(records + files, key=lambda x: x.created_at, reverse=True)
     
-    # Get all doctors this patient has had an appointment with
+    # --- UPDATED: Logic for Pending Reviews ---
+    # 1. Get all completed appointments
+    completed_apts = g.profile.appointments.filter_by(status='Completed').all()
+    # 2. Get IDs of doctors this patient has *already* reviewed
+    reviewed_doctor_ids = {review.doctor_id for review in g.profile.reviews.all()}
+    # 3. Find doctors from completed appointments that haven't been reviewed
+    doctors_to_review = []
+    seen_doctor_ids = set()
+    for apt in completed_apts:
+        if apt.doctor_id not in reviewed_doctor_ids and apt.doctor_id not in seen_doctor_ids:
+            doctors_to_review.append(apt.doctor)
+            seen_doctor_ids.add(apt.doctor_id)
+
+    # (Permission Management Logic is Unchanged)
     doctor_ids = {apt.doctor_id for apt in g.profile.appointments.all()}
     permissioned_doctors = {doc.id for doc in g.profile.permitted_doctors}
-    
     doctors = db.session.scalars(db.select(DoctorProfile).where(DoctorProfile.id.in_(doctor_ids))).all()
 
-    return render_template('patient_dashboard.html', timeline=timeline, doctors=doctors, permissioned_doctors=permissioned_doctors)
+    return render_template('patient_dashboard.html', 
+                           timeline_items=timeline_items, 
+                           doctors=doctors, 
+                           permissioned_doctors=permissioned_doctors,
+                           doctors_to_review=doctors_to_review)
 
+# (Search Doctors Route is Unchanged)
 @app.route("/search_doctors", methods=['POST'])
 @login_required
 @role_required('patient')
@@ -247,7 +302,6 @@ def search_doctors():
     specialty = request.form.get('specialty')
     pincode = request.form.get('pincode')
 
-    # Base query
     query = db.select(DoctorProfile)
     
     if specialty:
@@ -255,7 +309,6 @@ def search_doctors():
     if pincode:
         query = query.where(DoctorProfile.pincode == pincode)
 
-    # Subquery to calculate average ratings
     avg_ratings_subquery = db.select(
         DoctorReview.doctor_id,
         func.avg(DoctorReview.overall_rating).label('avg_overall'),
@@ -263,24 +316,18 @@ def search_doctors():
         func.avg(DoctorReview.hospitality_rating).label('avg_hospitality')
     ).group_by(DoctorReview.doctor_id).subquery()
     
-    # Join the doctor query with the ratings subquery
     query = query.join(avg_ratings_subquery, DoctorProfile.id == avg_ratings_subquery.c.doctor_id, isouter=True)
-    # Add the average fields to the selection
     query = query.add_columns(
         avg_ratings_subquery.c.avg_overall,
         avg_ratings_subquery.c.avg_cost,
         avg_ratings_subquery.c.avg_hospitality
     )
     
-    # Order by highest overall rating first
     results = db.session.execute(query.order_by(db.desc('avg_overall'))).all()
-    
-    # 'results' is a list of Row objects. Each row contains:
-    # (DoctorProfile object, avg_overall, avg_cost, avg_hospitality)
     
     return render_template('search_results.html', results=results, specialty=specialty, pincode=pincode)
 
-
+# (Book Appointment Route is Unchanged)
 @app.route("/book_appointment/<int:doctor_id>", methods=['GET', 'POST'])
 @login_required
 @role_required('patient')
@@ -295,7 +342,6 @@ def book_appointment(doctor_id):
             apt_time_str = request.form.get('appointment_time')
             apt_time = datetime.datetime.fromisoformat(apt_time_str)
             
-            # Check if appointment is in the past
             if apt_time < datetime.datetime.now():
                 flash('Cannot book an appointment in the past.', 'danger')
                 return render_template('book_appointment.html', doctor=doctor)
@@ -315,18 +361,15 @@ def book_appointment(doctor_id):
     
     return render_template('book_appointment.html', doctor=doctor)
 
+# (Manage Permissions Route is Unchanged)
 @app.route("/manage_permissions", methods=['POST'])
 @login_required
 @role_required('patient')
 def manage_permissions():
-    # Get the list of doctor IDs from the form
     selected_doctor_ids = request.form.getlist('doctor_ids', type=int)
-    
-    # Get all doctors this patient has seen
     all_seen_doctors_ids = {apt.doctor_id for apt in g.profile.appointments.all()}
     all_seen_doctors = db.session.scalars(db.select(DoctorProfile).where(DoctorProfile.id.in_(all_seen_doctors_ids))).all()
     
-    # Update permissions
     g.profile.permitted_doctors.clear()
     for doc in all_seen_doctors:
         if doc.id in selected_doctor_ids:
@@ -337,12 +380,74 @@ def manage_permissions():
     return redirect(url_for('patient_dashboard'))
 
 
-# --- Doctor Routes ---
+# --- NEW ROUTE ---
+@app.route("/leave_review/<int:doctor_id>", methods=['GET', 'POST'])
+@login_required
+@role_required('patient')
+def leave_review(doctor_id):
+    doctor = db.session.get(DoctorProfile, doctor_id)
+    if not doctor:
+        flash('Doctor not found.', 'danger')
+        return redirect(url_for('patient_dashboard'))
+
+    # Security: Check if patient had a completed appointment with this doctor
+    had_completed_apt = db.session.scalar(db.select(Appointment).where(
+        Appointment.patient_id == g.profile.id,
+        Appointment.doctor_id == doctor.id,
+        Appointment.status == 'Completed'
+    ).limit(1))
+    
+    if not had_completed_apt:
+        flash('You can only review doctors after a completed appointment.', 'danger')
+        return redirect(url_for('patient_dashboard'))
+        
+    # Security: Check if patient already reviewed this doctor
+    existing_review = db.session.scalar(db.select(DoctorReview).where(
+        DoctorReview.patient_id == g.profile.id,
+        DoctorReview.doctor_id == doctor.id
+    ).limit(1))
+    
+    if existing_review:
+        flash('You have already reviewed this doctor.', 'info')
+        return redirect(url_for('patient_dashboard'))
+
+    if request.method == 'POST':
+        try:
+            cost = int(request.form.get('cost_rating'))
+            hospitality = int(request.form.get('hospitality_rating'))
+            med_rec = int(request.form.get('med_rec_rating'))
+            overall = int(request.form.get('overall_rating'))
+            comment = request.form.get('comment')
+            
+            if not all(1 <= r <= 10 for r in [cost, hospitality, med_rec, overall]):
+                raise ValueError("Ratings must be between 1 and 10.")
+
+            new_review = DoctorReview(
+                cost_rating=cost,
+                hospitality_rating=hospitality,
+                med_rec_rating=med_rec,
+                overall_rating=overall,
+                comment=comment,
+                patient_id=g.profile.id,
+                doctor_id=doctor.id
+            )
+            db.session.add(new_review)
+            db.session.commit()
+            flash('Thank you! Your review has been submitted.', 'success')
+            return redirect(url_for('patient_dashboard'))
+        except ValueError as e:
+            flash(f'Invalid input. {e}', 'danger')
+        
+    return render_template('leave_review.html', doctor=doctor)
+
+
+# --- Doctor Routes (UPDATED) ---
+
+# (Doctor Dashboard Route is Unchanged)
 @app.route("/doctor_dashboard")
 @login_required
 @role_required('doctor')
 def doctor_dashboard():
-    # Get all appointments for this doctor
     appointments = g.profile.appointments.order_by(Appointment.appointment_time.asc()).all()
     pending_apts = [a for a in appointments if a.status == 'Pending']
     confirmed_apts = [a for a in appointments if a.status == 'Confirmed']
@@ -353,12 +458,12 @@ def doctor_dashboard():
                            confirmed_apts=confirmed_apts,
                            completed_apts=completed_apts)
 
+# (Appointment Action Route is Unchanged)
 @app.route("/appointment_action/<int:appointment_id>/<string:action>")
 @login_required
 @role_required('doctor')
 def appointment_action(appointment_id, action):
     apt = db.session.get(Appointment, appointment_id)
-    # Check if appointment exists and belongs to this doctor
     if not apt or apt.doctor_id != g.profile.id:
         flash('Appointment not found or not authorized.', 'danger')
         return redirect(url_for('doctor_dashboard'))
@@ -378,6 +483,7 @@ def appointment_action(appointment_id, action):
     db.session.commit()
     return redirect(url_for('doctor_dashboard'))
 
+# (Update Record Route is UPDATED)
 @app.route("/update_record/<int:patient_id>", methods=['GET', 'POST'])
 @login_required
 @role_required('doctor')
@@ -387,11 +493,10 @@ def update_record(patient_id):
         flash('Patient not found.', 'danger')
         return redirect(url_for('doctor_dashboard'))
 
-    # Check for permission
     has_permission = patient in g.profile.permitted_patients
     
     if request.method == 'POST':
-        # Doctor is "committing" a new record
+        # This form is for "committing" a new text-based record
         diagnosis = request.form.get('diagnosis')
         notes = request.form.get('notes')
         prescription = request.form.get('prescription')
@@ -409,36 +514,138 @@ def update_record(patient_id):
             db.session.add(new_record)
             db.session.commit()
             flash(f'New medical record added for {patient.full_name}.', 'success')
-            return redirect(url_for('doctor_dashboard'))
+            return redirect(url_for('update_record', patient_id=patient.id))
     
-    # Get patient's history
+    # --- UPDATED: Combined Timeline Logic ---
+    timeline_items = []
     if has_permission:
-        # Doctor has permission, show all records
-        timeline = patient.records.order_by(MedicalRecord.created_at.desc()).all()
+        # Doctor has permission, show all records and files
+        records = patient.records.all()
+        files = patient.files.all()
+        timeline_items = sorted(records + files, key=lambda x: x.created_at, reverse=True)
     else:
-        # No permission, show only records this doctor created
-        timeline = patient.records.filter_by(doctor_id=g.profile.id).order_by(MedicalRecord.created_at.desc()).all()
+        # No permission, show only items this doctor created
+        records = patient.records.filter_by(doctor_id=g.profile.id).all()
+        files = patient.files.filter_by(doctor_id=g.profile.id).all()
+        timeline_items = sorted(records + files, key=lambda x: x.created_at, reverse=True)
 
-    return render_template('update_record.html', patient=patient, timeline=timeline, has_permission=has_permission)
+    return render_template('update_record.html', patient=patient, timeline_items=timeline_items, has_permission=has_permission)
 
 
-# --- Insurance Routes ---
+# --- NEW ROUTE ---
+@app.route('/upload_file/<int:patient_id>', methods=['POST'])
+@login_required
+@role_required('doctor')
+def upload_file(patient_id):
+    patient = db.session.get(PatientProfile, patient_id)
+    if not patient:
+        flash('Patient not found.', 'danger')
+        return redirect(url_for('doctor_dashboard'))
+    
+    if 'file' not in request.files:
+        flash('No file part', 'danger')
+        return redirect(url_for('update_record', patient_id=patient_id))
+    
+    file = request.files['file']
+    description = request.form.get('description', '')
+
+    if file.filename == '':
+        flash('No selected file', 'danger')
+        return redirect(url_for('update_record', patient_id=patient_id))
+
+    if file and allowed_file(file.filename):
+        from werkzeug.utils import secure_filename
+        original_filename = secure_filename(file.filename)
+        # Create a unique filename using UUID
+        ext = original_filename.rsplit('.', 1)[1].lower()
+        unique_filename = f"{uuid.uuid4()}.{ext}"
+        
+        # Save the file
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        file.save(file_path)
+        
+        # Save to database
+        new_file = MedicalFile(
+            filename=unique_filename,
+            original_filename=original_filename,
+            description=description,
+            patient_id=patient.id,
+            doctor_id=g.profile.id
+        )
+        db.session.add(new_file)
+        db.session.commit()
+        
+        flash('File uploaded successfully.', 'success')
+    else:
+        flash('File type not allowed. Allowed types are: png, jpg, jpeg, pdf.', 'danger')
+        
+    return redirect(url_for('update_record', patient_id=patient_id))
+
+
+# --- NEW ROUTE ---
+@app.route('/uploads/<path:filename>')
+@login_required
+def get_file(filename):
+    """Securely serves an uploaded file."""
+    
+    # --- FIX: Manually set g.profile based on the logged-in user's role ---
+    if current_user.role == 'patient':
+        g.profile = current_user.patient_profile
+    elif current_user.role == 'doctor':
+        g.profile = current_user.doctor_profile
+    elif current_user.role == 'insurance':
+        g.profile = current_user.insurance_profile
+    # --- END FIX ---
+    
+    # Find the file in the database
+    medical_file = db.session.scalar(db.select(MedicalFile).where(MedicalFile.filename == filename))
+    if not medical_file:
+        abort(404) # Not Found
+
+    # Security Check:
+    is_authorized = False
+    if current_user.role == 'patient':
+        # Patients can only access their own files
+        if medical_file.patient_id == g.profile.id:
+            is_authorized = True
+    
+    elif current_user.role == 'doctor':
+        # Doctors can access files they uploaded
+        if medical_file.doctor_id == g.profile.id:
+            is_authorized = True
+        # Or files of patients who gave them permission
+        elif medical_file.patient in g.profile.permitted_patients:
+            is_authorized = True
+            
+    if not is_authorized:
+        abort(403) # Forbidden
+        
+    # Serve the file
+    # as_attachment=False tries to display in browser (e.g., PDFs, images)
+    # download_name=... ensures it has the friendly, original filename
+    try:
+        return send_from_directory(
+            app.config['UPLOAD_FOLDER'], 
+            filename, 
+            as_attachment=False,
+            download_name=medical_file.original_filename
+        )
+    except FileNotFoundError:
+        abort(404)
+
+
+# --- Insurance Routes (Unchanged) ---
 @app.route("/insurance_dashboard")
 @login_required
 @role_required('insurance')
 def insurance_dashboard():
-    # Placeholder for insurance matching algorithm
     return render_template('insurance_dashboard.html')
 
-# --- Error Handler ---
+# --- Error Handler (Unchanged) ---
 @app.errorhandler(403)
 def forbidden(e):
     return render_template('403.html'), 403
 
 # --- Run the App ---
 if __name__ == '__main__':
-    # This check is no longer needed as init_db.py handles creation
-    # with app.app_context():
-    #     db.create_all()
     app.run(debug=True)
-

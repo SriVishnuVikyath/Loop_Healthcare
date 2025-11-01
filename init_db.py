@@ -1,14 +1,13 @@
 import os
-from  main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview
+from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview, MedicalFile
 from faker import Faker
 import random
 
 fake = Faker()
 
-# Add this definition near the top
-basedir = os.path.abspath(os.path.dirname(__file__))
-
-# Specialties for doctors
+# (Rest of the file is the same)
+# ...
+# ...
 SPECIALTIES = [
     'Cardiologist', 'Dermatologist', 'Neurologist', 'Pediatrician',
     'Oncologist', 'Orthopedist', 'General', 'Surgeon', 'Psychiatrist'
@@ -94,10 +93,8 @@ def create_fake_data():
     print(f"Created {len(doctors)} doctors, {len(patients)} patients, and 10 insurance users.")
 
     # --- Create Fake Reviews (1000) ---
-    # Each patient reviews a random number of doctors
     reviews_count = 0
     for patient in patients:
-        # Each patient reviews 5 to 15 doctors
         doctors_to_review = random.sample(doctors, random.randint(5, 15))
         for doctor in doctors_to_review:
             review = DoctorReview(
@@ -140,10 +137,9 @@ def create_fake_data():
 
 
 if __name__ == "__main__":
-    # Get the path to the database file
+    basedir = os.path.abspath(os.path.dirname(__file__))
     db_path = os.path.join(basedir, 'site.db')
     
-    # Check if the database file already exists
     if os.path.exists(db_path):
         response = input("Database 'site.db' already exists. \nDo you want to DELETE it and create a new one with fake data? (yes/no): ")
         if response.lower() == 'yes':
@@ -154,8 +150,8 @@ if __name__ == "__main__":
         else:
             print("Initialization cancelled. Using existing database.")
     else:
-        # Database doesn't exist, create it
         with app.app_context():
             clear_database()
             create_fake_data()
         print("Database 'site.db' created and populated.")
+

@@ -5,12 +5,30 @@
     {% if has_permission %}
         <div class="alert alert-success">You have full permission to view this patient's entire history.</div>
     {% else %}
-        <div class="alert alert-info">You only have permission to view records you created.</div>
+        <div class="alert alert-info">You only have permission to view records and files you created.</div>
     {% endif %}
 
-    <!-- Form to "commit" a new record -->
+    <!-- NEW: File Upload Form -->
+    <div class="card">
+        <div class="card-header">File Manager (Upload PDF, PNG, JPG)</div>
+        <!-- Note: This form posts to a *different* route -->
+        <form action="{{ url_for('upload_file', patient_id=patient.id) }}" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="file">Select file</label>
+                <input type="file" id="file" name="file" required>
+            </div>
+            <div class="form-group">
+                <label for="description">File Description (optional)</label>
+                <input type="text" id="description" name="description" placeholder="e.g., 'Lab Results from 11/02'">
+            </div>
+            <button type="submit" class="btn">Upload File</button>
+        </form>
+    </div>
+
+    <!-- Form to "commit" a new text record -->
     <div class="card">
         <div class="card-header">Add New Medical Record ("Commit")</div>
+        <!-- Note: This form posts to the *current* route -->
         <form method="POST">
             <div class="form-group">
                 <label for="diagnosis">Diagnosis</label>
@@ -24,30 +42,42 @@
                 <label for="prescription">Prescription</label>
                 <textarea id="prescription" name="prescription" rows="2"></textarea>
             </div>
-            <button type="submit" class="btn">Save New Record</button>
+            <button type="submit" class="btn-secondary">Save New Text Record</button>
         </form>
     </div>
 
-    <!-- Patient's Timeline -->
+    <!-- UPDATED: Patient's Timeline -->
     <div class="card">
         <div class="card-header">Patient Record Timeline</div>
         <ul class="timeline">
-            {% for record in timeline %}
+            {% for item in timeline_items %}
+                {% if item.__tablename__ == 'medical_record' %}
+                <!-- This is a text-based record -->
                 <li class="timeline-item">
-                    <div class="date">{{ record.created_at.strftime('%Y-%m-%d %I:%M %p') }}</div>
-                    <h4>Visit with {{ record.doctor.full_name }}
-                        {% if record.doctor_id == g.profile.id %}
-                            (You)
-                        {% endif %}
+                    <div class="date">{{ item.created_at.strftime('%Y-%m-%d %I:%M %p') }}</div>
+                    <h4>Visit with {{ item.doctor.full_name }}
+                        {% if item.doctor_id == g.profile.id %}(You){% endif %}
                     </h4>
-                    <p><b>Diagnosis:</b> {{ record.diagnosis }}</p>
-                    <p><b>Notes:</b> {{ record.notes }}</p>
-                    <p><b>Prescription:</b> {{ record.prescription }}</p>
+                    <p><b>Diagnosis:</b> {{ item.diagnosis }}</p>
+                    <p><b>Notes:</b> {{ item.notes }}</p>
+                    <p><b>Prescription:</b> {{ item.prescription }}</p>
                 </li>
+                {% elif item.__tablename__ == 'medical_file' %}
+                <!-- This is an uploaded file -->
+                <li class="timeline-item" style="background-color: #fdfdf0;">
+                    <div class="date">{{ item.created_at.strftime('%Y-%m-%d %I:%M %p') }}</div>
+                    <h4>File Uploaded by {{ item.doctor.full_name }}
+                        {% if item.doctor_id == g.profile.id %}(You){% endif %}
+                    </h4>
+                    <p><b>File:</b> <a href="{{ url_for('get_file', filename=item.filename) }}" target="_blank">{{ item.original_filename }}</a></p>
+                    <p><b>Description:</b> {{ item.description }}</p>
+                </li>
+                {% endif %}
             {% else %}
-                <li>No medical records found.</li>
+                <li>No medical records or files found for this patient.</li>
             {% endfor %}
         </ul>
     </div>
 
 {% endblock %}
+
