@@ -1,13 +1,10 @@
 import os
-from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview, MedicalFile
+from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview
 from faker import Faker
 import random
 
 fake = Faker()
 
-# (Rest of the file is the same)
-# ...
-# ...
 SPECIALTIES = [
     'Cardiologist', 'Dermatologist', 'Neurologist', 'Pediatrician',
     'Oncologist', 'Orthopedist', 'General', 'Surgeon', 'Psychiatrist'
@@ -24,9 +21,9 @@ def create_fake_data():
     """Populates the database with fake data."""
     print("Generating fake data...")
     
-    # --- Create Doctors (50) ---
+    # --- Create Doctors (10) ---
     doctors = []
-    for _ in range(50):
+    for _ in range(10):
         full_name = f"Dr. {fake.name()}"
         email = fake.email()
         password = 'password' # Use a simple password for all test users
@@ -47,9 +44,9 @@ def create_fake_data():
         db.session.add(profile)
         doctors.append(profile)
     
-    # --- Create Patients (100) ---
+    # --- Create Patients (20) ---
     patients = []
-    for _ in range(100):
+    for _ in range(20):
         full_name = fake.name()
         email = fake.email()
         password = 'password'
@@ -69,8 +66,8 @@ def create_fake_data():
         db.session.add(profile)
         patients.append(profile)
 
-    # --- Create Insurance Users (10) ---
-    for _ in range(10):
+    # --- Create Insurance Users (5) ---
+    for _ in range(5):
         company_name = fake.company()
         email = fake.email()
         password = 'password'
@@ -90,13 +87,21 @@ def create_fake_data():
         db.session.add(profile)
 
     db.session.commit()
-    print(f"Created {len(doctors)} doctors, {len(patients)} patients, and 10 insurance users.")
+    print(f"Created {len(doctors)} doctors, {len(patients)} patients, and 5 insurance users.")
 
-    # --- Create Fake Reviews (1000) ---
+    # --- Create Fake Reviews (50 total) ---
     reviews_count = 0
-    for patient in patients:
-        doctors_to_review = random.sample(doctors, random.randint(5, 15))
-        for doctor in doctors_to_review:
+    for _ in range(50):
+        patient = random.choice(patients)
+        doctor = random.choice(doctors)
+
+        # Check if this review already exists
+        existing = db.session.scalar(db.select(DoctorReview).where(
+            DoctorReview.patient_id == patient.id,
+            DoctorReview.doctor_id == doctor.id
+        ))
+        
+        if not existing:
             review = DoctorReview(
                 cost_rating=random.randint(1, 10),
                 hospitality_rating=random.randint(1, 10),
@@ -154,4 +159,5 @@ if __name__ == "__main__":
             clear_database()
             create_fake_data()
         print("Database 'site.db' created and populated.")
+
 

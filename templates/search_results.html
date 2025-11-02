@@ -1,42 +1,60 @@
 {% extends 'layout.html' %}
+
 {% block content %}
-    <h1>Doctor Search Results</h1>
-    <p>Showing results for: 
-        {% if specialty %}<b>Specialty:</b> {{ specialty }} {% endif %}
-        {% if pincode %}<b>Pincode:</b> {{ pincode }}{% endif %}
-    </p>
+    <div class="container mt-4">
+        <h2>Search Results</h2>
+        <p class="lead">Showing results for:
+            <strong>Specialty:</strong> {{ specialty or 'Any' }},
+            <!-- FIXED: Changed min-rating to min_rating -->
+            <strong>Min Rating:</strong> {{ min_rating }}/10,
+            <strong>Sort By:</strong> {{ 'Distance' if sort_by == 'distance' else 'Best Rating' }}
+        </p>
 
-    <a href="{{ url_for('patient_dashboard') }}" class="btn-secondary" style="text-decoration: none; padding: 10px 15px; border-radius: 6px; margin-bottom: 20px; display: inline-block;">&larr; Back to Dashboard</a>
+        <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary mb-3">Back to Dashboard</a>
 
-    <div class="results-list">
-        {% for row in results %}
-            {% set doctor = row[0] %}
-            {% set avg_overall = row[1] %}
-            {% set avg_cost = row[2] %}
-            {% set avg_hospitality = row[3] %}
-            <div class="card">
-                <div class="d-flex justify-between align-center">
-                    <div>
-                        <h3>{{ doctor.full_name }}</h3>
-                        <p><b>Specialty:</b> {{ doctor.specialty }}</p>
-                        <p><b>Address:</b> {{ doctor.practice_address }}, {{ doctor.pincode }}</p>
-                        <p><b>Phone:</b> {{ doctor.phone }}</p>
-                        <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-                        <p>
-                            <b>Overall Rating:</b> {{ "%.1f"|format(avg_overall) if avg_overall else 'N/A' }} / 10
-                            <br>
-                            <b>Avg. Cost:</b> {{ "%.1f"|format(avg_cost) if avg_cost else 'N/A' }} / 10
-                            <br>
-                            <b>Hospitality:</b> {{ "%.1f"|format(avg_hospitality) if avg_hospitality else 'N/A' }} / 10
-                        </p>
-                    </div>
-                    <div>
-                        <a href="{{ url_for('book_appointment', doctor_id=doctor.id) }}" class="btn">Book Appointment</a>
+        <div class="row">
+            {% if results %}
+                {% for doctor, avg_overall, avg_cost, avg_hospitality, distance_km in results %}
+                <div class="col-md-6 mb-3">
+                    <!-- UPDATED: Removed h-100 -->
+                    <div class="card">
+                        <!-- UPDATED: Removed d-flex and flex-column -->
+                        <div class="card-body">
+                            <!-- This div holds all the text content -->
+                            <div>
+                                <!-- UPDATED: Larger font for name and specialty -->
+                                <h3 class="card-title">{{ doctor.full_name }}</h3>
+                                <h5 class="card-subtitle mb-2 text-muted">{{ doctor.specialty }}</h5>
+                                
+                                <p class="card-text">{{ doctor.practice_address }}</p>
+
+                                <p class="card-text">
+                                    <b>Overall Rating:</b> {{ "%.1f"|format(avg_overall) if avg_overall else 'N/A' }} / 10<br>
+                                    <b>Avg. Cost:</b> {{ "%.1f"|format(avg_cost) if avg_cost else 'N/A' }} / 10<br>
+                                    <b>Avg. Hospitality:</b> {{ "%.1f"|format(avg_hospitality) if avg_hospitality else 'N/A' }} / 10<br>
+                                    <b>Distance:</b> 
+                                    {% if distance_km is not none %}
+                                        {{ "%.1f"|format(distance_km) }} km
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </p>
+                            </div>
+
+                            <!-- UPDATED: Removed mt-auto and added mt-3 for spacing -->
+                            <div class="d-flex justify-content-end mt-3">
+                                <a href="{{ url_for('book_appointment', doctor_id=doctor.id) }}" class="btn btn-primary">Book Appointment</a>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
-            </div>
-        {% else %}
-            <p>No doctors found matching your criteria.</p>
-        {% endfor %}
+                {% endfor %}
+            {% else %}
+                <div class="col">
+                    <p>No doctors found matching your criteria.</p>
+                </div>
+            {% endif %}
+        </div>
     </div>
 {% endblock %}

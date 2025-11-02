@@ -1,16 +1,51 @@
 {% extends 'layout.html' %}
-{% block content %}
-    <h1>Book Appointment</h1>
-    <p>You are booking an appointment with:</p>
-    <h2>{{ doctor.full_name }}</h2>
-    <p><b>Specialty:</b> {{ doctor.specialty }}</p>
-    <p><b>Address:</b> {{ doctor.practice_address }}</p>
 
-    <form method="POST">
-        <div class="form-group">
-            <label for="appointment_time">Select Date and Time</label>
-            <input type="datetime-local" id="appointment_time" name="appointment_time" required>
+{% block content %}
+<div class="container mt-4">
+    <h2>Book Appointment</h2>
+    <h4>with {{ doctor.full_name }} ({{ doctor.specialty }})</h4>
+    <p>{{ doctor.practice_address }}</p>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Schedule a Time</h5>
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label for="appointment_time" class="form-label">Select Date and Time</label>
+                            <input type="datetime-local" class="form-control" id="appointment_time" name="appointment_time" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Request Appointment</button>
+                        <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary">Cancel</a>
+                    </form>
+                </div>
+            </div>
         </div>
-        <button type="submit" class="btn">Request Appointment</button>
-    </form>
+        <div class="col-md-6">
+            <!-- NEW: This section displays reviews -->
+            <h4>Anonymous Patient Reviews</h4>
+            <div style="max-height: 400px; overflow-y: auto;">
+                {% if reviews %}
+                    {% for review in reviews %}
+                        <div class="card mb-2">
+                            <div class="card-body">
+                                <h5 class="card-title">Overall: {{ review.overall_rating }}/10</h5>
+                                <p class="card-text">"{{ review.comment }}"</p>
+                                <small class="text-muted">
+                                    Cost: {{ review.cost_rating }}/10 |
+                                    Hospitality: {{ review.hospitality_rating }}/10 |
+                                    Med Recs: {{ review.med_rec_rating }}/10
+                                </small>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No reviews available for this doctor yet.</p>
+                {% endif %}
+            </div>
+            <!-- END NEW SECTION -->
+        </div>
+    </div>
+</div>
 {% endblock %}
