@@ -1,8 +1,8 @@
 import os
-from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview
+from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview, Appointment, MedicalRecord, MedicalFile
 from faker import Faker
 import random
-import datetime # Import datetime
+import datetime
 
 fake = Faker()
 
@@ -42,9 +42,9 @@ def create_fake_data():
             practice_address=fake.address(),
             pincode=fake.zipcode()[:5],
             user_id=user.id,
-            availability_start_time=datetime.time(9, 0),  # Default 9 AM
-            availability_end_time=datetime.time(17, 0), # Default 5 PM
-            slot_duration_minutes=random.choice([15, 30, 60]) # Randomize slot times
+            availability_start_time=datetime.time(9, 0),
+            availability_end_time=datetime.time(17, 0),
+            slot_duration_minutes=30
         )
         db.session.add(profile)
         doctors.append(profile)
@@ -126,30 +126,48 @@ def create_fake_data():
     email = "patient@test.com"
     password = "password"
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    user = User(email=email, password_hash=hashed_password, role='patient')
-    db.session.add(user)
+    p_user = User(email=email, password_hash=hashed_password, role='patient')
+    db.session.add(p_user)
     db.session.commit()
-    profile = PatientProfile(full_name="Test Patient", phone="1234567890", address="123 Test St", pincode="10001", user_id=user.id)
-    db.session.add(profile)
+    p_profile = PatientProfile(full_name="Test Patient", phone="1234567890", address="123 Test St", pincode="10001", user_id=p_user.id)
+    db.session.add(p_profile)
     
     # Add one easy-to-test doctor
     email = "doctor@test.com"
     password = "password"
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    user = User(email=email, password_hash=hashed_password, role='doctor')
-    db.session.add(user)
+    d_user = User(email=email, password_hash=hashed_password, role='doctor')
+    db.session.add(d_user)
     db.session.commit()
-    # --- UPDATED: Add availability to test doctor ---
-    profile = DoctorProfile(
-        full_name="Dr. Test", phone="9876543210", specialty="Cardiologist", 
-        practice_address="456 Test Ave", pincode="10001", user_id=user.id,
+    d_profile = DoctorProfile(
+        full_name="Dr. Test", 
+        phone="9876543210", 
+        specialty="Cardiologist", 
+        practice_address="456 Test Ave", 
+        pincode="10001", 
+        user_id=d_user.id,
         availability_start_time=datetime.time(9, 0),
         availability_end_time=datetime.time(17, 0),
         slot_duration_minutes=30
     )
-    db.session.add(profile)
+    db.session.add(d_profile)
     
     db.session.commit()
+    
+    # --- NEW: Add a completed appointment to test billing ---
+    print("Adding test appointment for billing...")
+    completed_apt = Appointment(
+        appointment_time=datetime.datetime.now() - datetime.timedelta(days=2),
+        status='Completed',
+        patient_id=p_profile.id,
+        doctor_id=d_profile.id,
+        bill_amount=150.00,
+        bill_status='Unpaid',
+        bill_description='Standard Consultation'
+    )
+    db.session.add(completed_apt)
+    db.session.commit()
+
     print("Added test patient (patient@test.com) and test doctor (doctor@test.com). Password for both is 'password'.")
 
 
@@ -171,3 +189,4 @@ if __name__ == "__main__":
             clear_database()
             create_fake_data()
         print("Database 'site.db' created and populated.")
+

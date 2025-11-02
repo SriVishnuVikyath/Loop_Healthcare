@@ -1,6 +1,6 @@
 import os
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, g, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, g, send_from_directory, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_bcrypt import Bcrypt
@@ -9,6 +9,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import extract
 import datetime
 from geopy.distance import great_circle
+from sqlalchemy import or_ # <-- IMPORT or_
 
 # --- App Setup (Unchanged) ---
 app = Flask(__name__)
@@ -115,6 +116,12 @@ class Appointment(db.Model):
     status = db.Column(db.String(20), nullable=False, default='Pending') # Pending, Confirmed, Cancelled, Completed
     patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
+    
+    # --- NEW: Billing Fields ---
+    bill_amount = db.Column(db.Float)
+    bill_status = db.Column(db.String(20), nullable=False, default='Unbilled') # Unbilled, Unpaid, Paid
+    bill_description = db.Column(db.Text)
+    
     # --- NEW: Unique constraint for doctor and time ---
     # This ensures only one patient can book a specific slot with a doctor
     __table_args__ = (db.UniqueConstraint('doctor_id', 'appointment_time', name='_doctor_time_uc'),)
@@ -199,13 +206,17 @@ def register():
         if role == 'patient':
             profile = PatientProfile(full_name=full_name, phone=phone, address=address, pincode=pincode, user_id=new_user.id)
         elif role == 'doctor':
-            # --- UPDATED: Set default availability ---
+            # --- UPDATED: Set default availability and attach to user ---
             profile = DoctorProfile(
-                full_name=full_name, phone=phone, practice_address=address, pincode=pincode, user_id=new_user.id, 
+                full_name=full_name or f"Dr. {email.split('@')[0]}",
+                phone=phone,
                 specialty=request.form.get('specialty', 'General'),
-                availability_start_time=datetime.time(9, 0), # Default 9 AM
-                availability_end_time=datetime.time(17, 0), # Default 5 PM
-                slot_duration_minutes=30 # Default 30 mins
+                practice_address=address,
+                pincode=pincode,
+                user_id=new_user.id,
+                availability_start_time=datetime.time(9, 0),
+                availability_end_time=datetime.time(17, 0),
+                slot_duration_minutes=30
             )
         elif role == 'insurance':
             profile = InsuranceProfile(company_name=full_name, phone=phone, company_address=address, pincode=pincode, user_id=new_user.id)
@@ -273,7 +284,11 @@ def patient_dashboard():
     files = g.profile.files.all()
     timeline_items = sorted(records + files, key=lambda x: x.created_at, reverse=True)
     
-    completed_apts = g.profile.appointments.filter_by(status='Completed').all()
+    # --- UPDATED: Get all appointments for billing ---
+    all_appointments = g.profile.appointments.order_by(Appointment.appointment_time.desc()).all()
+    
+    # --- Review logic now uses the `all_appointments` list ---
+    completed_apts = [apt for apt in all_appointments if apt.status == 'Completed']
     reviewed_doctor_ids = {review.doctor_id for review in g.profile.reviews.all()}
     doctors_to_review = []
     seen_doctor_ids = set()
@@ -290,16 +305,20 @@ def patient_dashboard():
                            timeline_items=timeline_items, 
                            doctors=doctors, 
                            permissioned_doctors=permissioned_doctors,
-                           doctors_to_review=doctors_to_review)
+                           doctors_to_review=doctors_to_review,
+                           appointments=all_appointments) # <-- Pass all appointments for billing
 
-# (Search Route Unchanged)
+# --- REFACTORED/FIXED SEARCH ROUTE ---
 @app.route("/search_doctors", methods=['POST'])
 @login_required
 @role_required('patient')
 def search_doctors():
-    # Get new form fields
+    # FIXED: initialize variables and build query with proper LEFT JOIN
     specialty = request.form.get('specialty')
-    min_rating = int(request.form.get('min_rating', 0))
+    try:
+        min_rating = int(request.form.get('min_rating', 0))
+    except (TypeError, ValueError):
+        min_rating = 0
     sort_by = request.form.get('sort_by', 'rating')
 
     patient_loc_missing = False
@@ -317,6 +336,7 @@ def search_doctors():
         func.avg(DoctorReview.hospitality_rating).label('avg_hospitality')
     ).group_by(DoctorReview.doctor_id).subquery()
 
+    # Proper select + LEFT JOIN to include doctors without reviews
     query = db.select(
         DoctorProfile,
         avg_ratings_subquery.c.avg_overall,
@@ -325,45 +345,52 @@ def search_doctors():
     ).join(
         avg_ratings_subquery,
         DoctorProfile.id == avg_ratings_subquery.c.doctor_id,
-        isouter=True # This is a LEFT JOIN
+        isouter=True
     )
 
     if specialty:
         query = query.where(DoctorProfile.specialty.ilike(f'%{specialty}%'))
 
+    # If user requested a minimum rating (>0), include doctors whose avg_overall >= min_rating
+    # Also allow including unrated doctors by explicitly keeping NULLs if desired.
     if min_rating > 0:
-        query = query.where(avg_ratings_subquery.c.avg_overall >= min_rating)
-    
+        query = query.where(
+            or_(
+                avg_ratings_subquery.c.avg_overall >= min_rating,
+                avg_ratings_subquery.c.avg_overall == None
+            )
+        )
+
     results = db.session.execute(query).all()
-    
+
     final_results = []
     for row in results:
+        # row[0] or attribute access both work; use attribute for readability
         doctor = row.DoctorProfile
-        avg_overall = row.avg_overall
-        avg_cost = row.avg_cost
-        avg_hospitality = row.avg_hospitality
-        
+        avg_overall = getattr(row, 'avg_overall', None)
+        avg_cost = getattr(row, 'avg_cost', None)
+        avg_hospitality = getattr(row, 'avg_hospitality', None)
+
         distance_km = None
         if patient_coords and doctor.latitude and doctor.longitude:
             doctor_coords = (doctor.latitude, doctor.longitude)
             distance_km = great_circle(patient_coords, doctor_coords).km
-        
+
         final_results.append((doctor, avg_overall, avg_cost, avg_hospitality, distance_km))
 
+    # Sorting
     if sort_by == 'distance':
-        if patient_loc_missing:
-            final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
-        else:
+        if not patient_loc_missing:
             final_results.sort(key=lambda x: (x[4] is None, x[4]))
-    else: # Default to 'rating'
+    elif sort_by == 'rating':
         final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
+    # else: leave DB order
 
-    return render_template('search_results.html', 
-                           results=final_results, 
-                           specialty=specialty, 
+    return render_template('search_results.html',
+                           results=final_results,
+                           specialty=specialty,
                            min_rating=min_rating,
                            sort_by=sort_by)
-
 
 # --- NEW: Helper function to get available slots ---
 def get_available_slots(doctor, selected_date):
@@ -648,6 +675,63 @@ def appointment_action(appointment_id, action):
     db.session.commit()
     return redirect(url_for('doctor_dashboard'))
 
+# --- NEW: Route for setting a bill ---
+@app.route("/set_bill/<int:appointment_id>", methods=['POST'])
+@login_required
+@role_required('doctor')
+def set_bill(appointment_id):
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt or apt.doctor_id != g.profile.id:
+        flash('Appointment not found or not authorized.', 'danger')
+        return redirect(url_for('doctor_dashboard'))
+    
+    if apt.status != 'Completed':
+        flash('Can only bill for completed appointments.', 'danger')
+        return redirect(url_for('doctor_dashboard'))
+    
+    try:
+        amount = float(request.form.get('bill_amount'))
+        description = request.form.get('bill_description', '')
+        
+        if amount <= 0:
+            flash('Bill amount must be greater than zero.', 'danger')
+            return redirect(url_for('doctor_dashboard'))
+
+        apt.bill_amount = amount
+        apt.bill_description = description
+        apt.bill_status = 'Unpaid' # Set status to Unpaid
+        db.session.commit()
+        flash(f'Bill sent to {apt.patient.full_name} for ${amount:.2f}.', 'success')
+
+    except ValueError:
+        flash('Invalid bill amount.', 'danger')
+    
+    return redirect(url_for('doctor_dashboard'))
+
+# --- NEW: Route for marking a bill as paid ---
+@app.route("/bill_action/<int:appointment_id>/<string:action>")
+@login_required
+@role_required('doctor')
+def bill_action(appointment_id, action):
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt or apt.doctor_id != g.profile.id:
+        flash('Appointment not found or not authorized.', 'danger')
+        return redirect(url_for('doctor_dashboard'))
+
+    if action == 'pay':
+        if apt.bill_status == 'Unpaid':
+            apt.bill_status = 'Paid'
+            db.session.commit()
+            flash(f'Bill for {apt.patient.full_name} marked as paid.', 'success')
+        else:
+            # Fixed quoting to avoid syntax error
+            flash("Bill is not in an 'Unpaid' state.", 'info')
+    else:
+        flash('Invalid action.', 'danger')
+
+    return redirect(url_for('doctor_dashboard'))
+
+
 # (Update Record Route is Unchanged)
 @app.route("/update_record/<int:patient_id>", methods=['GET', 'POST'])
 @login_required
@@ -797,4 +881,3 @@ def forbidden(e):
 # --- Run the App ---
 if __name__ == '__main__':
     app.run(debug=True)
-
