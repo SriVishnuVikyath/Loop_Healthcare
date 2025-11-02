@@ -30,47 +30,48 @@
         </form>
     </div>
 
-    <!-- NEW: Billing Card -->
+    <!-- NEW: Your Bills -->
     <div class="card">
         <div class="card-header">Your Bills</div>
+        {% set unpaid_bills = appointments|selectattr('bill_status', 'in', ['Unpaid', 'Pending Insurance'])|list %}
+        {% set paid_bills = appointments|selectattr('bill_status', 'equalto', 'Paid')|list %}
+        
+        {% if not unpaid_bills and not paid_bills %}
+            <p>You have no bills from completed appointments.</p>
+        {% endif %}
 
-        <!-- Local styles for billing rows -->
-        <style>
-            .apt-row { padding: 10px; border-bottom: 1px solid #eee; display:flex; justify-content:space-between; align-items:center; }
-            .apt-row.unpaid { background-color: #fdfdf0; }
-            .apt-amount { margin: 5px 0; }
-            .apt-desc { margin: 5px 0; }
-        </style>
-
-        {% set has_bills = false %}
-        {% for apt in appointments %}
-            {% if apt.bill_status != 'Unbilled' %}
-                {% set has_bills = true %}
-                <div class="apt-row {% if apt.bill_status == 'Unpaid' %}unpaid{% endif %}">
+        {% if unpaid_bills %}
+            <h4>Unpaid Bills</h4>
+            {% for apt in unpaid_bills %}
+                <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
                     <div>
-                        <div><b>Appointment:</b> {{ apt.appointment_time.strftime('%Y-%m-%d') }} with {{ apt.doctor.full_name }}</div>
-                        <p class="apt-amount"><b>Amount:</b>
-                            {% if apt.bill_amount is not none %}
-                                ${{ "%.2f"|format(apt.bill_amount) }}
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </p>
-                        <p class="apt-desc"><b>Description:</b> {{ apt.bill_description or '—' }}</p>
+                        <b>${{ "%.2f"|format(apt.bill_amount) }}</b> for {{ apt.bill_description or 'consultation' }}<br>
+                        <small>with {{ apt.doctor.full_name }} on {{ apt.appointment_time.strftime('%Y-%m-%d') }}</small>
                     </div>
-                    <div style="text-align:right;">
+                    <div>
                         {% if apt.bill_status == 'Unpaid' %}
-                            <p style="margin: 5px 0;"><b>Status: <span style="color: #c82333; font-weight: bold;">UNPAID</span></b></p>
-                            <small style="display: block;">Please contact your doctor's office to settle.</small>
-                        {% elif apt.bill_status == 'Paid' %}
-                            <p style="margin: 5px 0;"><b>Status: <span style="color: green; font-weight: bold;">PAID</span></b></p>
+                            <a href="{{ url_for('pay_bill', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; padding: 10px 15px; border-radius: 6px;">Pay Bill</a>
+                        {% elif apt.bill_status == 'Pending Insurance' %}
+                            <span style="font-weight: 600; color: #666;">(Pending Insurance)</span>
                         {% endif %}
                     </div>
                 </div>
-            {% endif %}
-        {% endfor %}
-        {% if not has_bills %}
-            <p>You have no bills to display.</p>
+            {% endfor %}
+        {% endif %}
+        
+        {% if paid_bills %}
+            <h4 style="margin-top: 20px;">Paid Bills</h4>
+            {% for apt in paid_bills %}
+                <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <div>
+                        <b>${{ "%.2f"|format(apt.bill_amount) }}</b> for {{ apt.bill_description or 'consultation' }}<br>
+                        <small>with {{ apt.doctor.full_name }} on {{ apt.appointment_time.strftime('%Y-%m-%d') }}</small>
+                    </div>
+                    <div>
+                        <span style="font-weight: 600; color: green;">(Paid)</span>
+                    </div>
+                </div>
+            {% endfor %}
         {% endif %}
     </div>
 

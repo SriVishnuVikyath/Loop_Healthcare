@@ -1,0 +1,32 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Pay Bill</h1>
+    <p>You are about to pay a bill for a completed appointment.</p>
+
+    <div class="card" style="max-width: 600px;">
+        <div class="card-header">Bill Details</div>
+        <div style="padding: 15px;">
+            <p style="font-size: 1.2rem;"><b>Doctor:</b> {{ apt.doctor.full_name }} ({{ apt.doctor.specialty }})</p>
+            <p style="font-size: 1.2rem;"><b>Service:</b> {{ apt.bill_description or 'Consultation' }}</p>
+            <p style="font-size: 1.5rem; font-weight: bold;"><b>Amount Due:</b> ${{ "%.2f"|format(apt.bill_amount) }}</p>
+        </div>
+    </div>
+
+    <div class="card" style="max-width: 600px;">
+        <div class="card-header">Choose Payment Method</div>
+        <div style="padding: 15px; display: flex; gap: 20px;">
+            <!-- This button simulates a successful UPI payment -->
+            <a href="{{ url_for('pay_upi', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; font-size: 1.1rem;">
+                Pay ${{ "%.2f"|format(apt.bill_amount) }} by UPI (Simulated)
+            </a>
+            
+            <!-- This button simulates submitting a claim to insurance -->
+            <a href="{{ url_for('claim_insurance', appointment_id=apt.id) }}" class="btn-secondary" style="text-decoration: none; font-size: 1.1rem;">
+                Claim with Insurance (Simulated)
+            </a>
+        </div>
+    </div>
+
+    <a href="{{ url_for('patient_dashboard') }}" style="margin-top: 20px; display: inline-block;">Cancel and go back</a>
+
+{% endblock %}

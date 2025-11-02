@@ -119,7 +119,7 @@ class Appointment(db.Model):
     
     # --- NEW: Billing Fields ---
     bill_amount = db.Column(db.Float)
-    bill_status = db.Column(db.String(20), nullable=False, default='Unbilled') # Unbilled, Unpaid, Paid
+    bill_status = db.Column(db.String(20), nullable=False, default='Unbilled') # Unbilled, Unpaid, Paid, Pending Insurance
     bill_description = db.Column(db.Text)
     
     # --- NEW: Unique constraint for doctor and time ---
@@ -206,14 +206,15 @@ def register():
         if role == 'patient':
             profile = PatientProfile(full_name=full_name, phone=phone, address=address, pincode=pincode, user_id=new_user.id)
         elif role == 'doctor':
-            # --- UPDATED: Set default availability and attach to user ---
+            # --- UPDATED: Set default availability ---
             profile = DoctorProfile(
-                full_name=full_name or f"Dr. {email.split('@')[0]}",
-                phone=phone,
-                specialty=request.form.get('specialty', 'General'),
-                practice_address=address,
-                pincode=pincode,
+                full_name=full_name, 
+                phone=phone, 
+                practice_address=address, 
+                pincode=pincode, 
                 user_id=new_user.id,
+                specialty=request.form.get('specialty', 'General'),
+                # --- NEW: Set default availability ---
                 availability_start_time=datetime.time(9, 0),
                 availability_end_time=datetime.time(17, 0),
                 slot_duration_minutes=30
@@ -308,21 +309,78 @@ def patient_dashboard():
                            doctors_to_review=doctors_to_review,
                            appointments=all_appointments) # <-- Pass all appointments for billing
 
+# --- NEW: Bill Payment Routes ---
+
+@app.route("/pay_bill/<int:appointment_id>", methods=['GET'])
+@login_required
+@role_required('patient')
+def pay_bill(appointment_id):
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt:
+        abort(404)
+    if apt.patient_id != g.profile.id:
+        abort(403) # Not this patient's bill
+    if apt.bill_status != 'Unpaid':
+        flash('This bill is not currently marked as unpaid.', 'info')
+        return redirect(url_for('patient_dashboard'))
+    
+    return render_template('pay_bill.html', apt=apt)
+
+@app.route("/pay_upi/<int:appointment_id>")
+@login_required
+@role_required('patient')
+def pay_upi(appointment_id):
+    """Simulates a successful UPI payment."""
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt:
+        abort(404)
+    if apt.patient_id != g.profile.id:
+        abort(403)
+    
+    if apt.bill_status == 'Unpaid':
+        apt.bill_status = 'Paid'
+        db.session.commit()
+        flash('Payment successful! Thank you.', 'success')
+    else:
+        flash('This bill is not currently marked as unpaid.', 'info')
+        
+    return redirect(url_for('patient_dashboard'))
+
+@app.route("/claim_insurance/<int:appointment_id>")
+@login_required
+@role_required('patient')
+def claim_insurance(appointment_id):
+    """Simulates submitting a claim to insurance."""
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt:
+        abort(404)
+    if apt.patient_id != g.profile.id:
+        abort(403)
+    
+    if apt.bill_status == 'Unpaid':
+        apt.bill_status = 'Pending Insurance'
+        db.session.commit()
+        flash('Bill claim submitted to insurance for processing.', 'info')
+    else:
+        flash('This bill is not currently marked as unpaid.', 'info')
+        
+    return redirect(url_for('patient_dashboard'))
+
+
 # --- REFACTORED/FIXED SEARCH ROUTE ---
 @app.route("/search_doctors", methods=['POST'])
 @login_required
 @role_required('patient')
 def search_doctors():
-    # FIXED: initialize variables and build query with proper LEFT JOIN
+    # --- FIXED: Get new form fields ---
     specialty = request.form.get('specialty')
-    try:
-        min_rating = int(request.form.get('min_rating', 0))
-    except (TypeError, ValueError):
-        min_rating = 0
-    sort_by = request.form.get('sort_by', 'rating')
+    min_rating = int(request.form.get('min_rating', 1)) # Form default is 1
+    sort_by = request.form.get('sort_by', 'default') # <-- FIXED: Default to 'default'
+    # --- END FIX ---
 
-    patient_loc_missing = False
-    patient_coords = None
+    # Handle missing patient location
+    patient_loc_missing = False # <-- FIX: Initialize variable
+    patient_coords = None # <-- FIX: Initialize variable
     if not g.profile.latitude or not g.profile.longitude:
         flash('Please update your profile with a valid address to use the distance search. Distances are not available.', 'info')
         patient_loc_missing = True
@@ -336,7 +394,7 @@ def search_doctors():
         func.avg(DoctorReview.hospitality_rating).label('avg_hospitality')
     ).group_by(DoctorReview.doctor_id).subquery()
 
-    # Proper select + LEFT JOIN to include doctors without reviews
+    # --- SYNTAX FIX: Correctly structure the .select().join() ---
     query = db.select(
         DoctorProfile,
         avg_ratings_subquery.c.avg_overall,
@@ -345,50 +403,57 @@ def search_doctors():
     ).join(
         avg_ratings_subquery,
         DoctorProfile.id == avg_ratings_subquery.c.doctor_id,
-        isouter=True
+        isouter=True # This is a LEFT JOIN
     )
+    # --- END SYNTAX FIX ---
 
     if specialty:
         query = query.where(DoctorProfile.specialty.ilike(f'%{specialty}%'))
 
-    # If user requested a minimum rating (>0), include doctors whose avg_overall >= min_rating
-    # Also allow including unrated doctors by explicitly keeping NULLs if desired.
-    if min_rating > 0:
+    # --- FIXED: Handle min_rating to include NULLs (unrated) ---
+    if min_rating > 1: # The form default is 1. Only filter if user selects 2 or more.
         query = query.where(
             or_(
                 avg_ratings_subquery.c.avg_overall >= min_rating,
-                avg_ratings_subquery.c.avg_overall == None
+                avg_ratings_subquery.c.avg_overall == None # Always include unrated doctors
             )
         )
-
+    # --- END FIX ---
+    
     results = db.session.execute(query).all()
-
+    
     final_results = []
     for row in results:
-        # row[0] or attribute access both work; use attribute for readability
         doctor = row.DoctorProfile
-        avg_overall = getattr(row, 'avg_overall', None)
-        avg_cost = getattr(row, 'avg_cost', None)
-        avg_hospitality = getattr(row, 'avg_hospitality', None)
-
+        avg_overall = row.avg_overall
+        avg_cost = row.avg_cost
+        avg_hospitality = row.avg_hospitality
+        
         distance_km = None
         if patient_coords and doctor.latitude and doctor.longitude:
             doctor_coords = (doctor.latitude, doctor.longitude)
             distance_km = great_circle(patient_coords, doctor_coords).km
-
+        
         final_results.append((doctor, avg_overall, avg_cost, avg_hospitality, distance_km))
-
-    # Sorting
+    
+    # --- FIXED: Make sorting optional ---
+    # 5. Sort the results in Python
     if sort_by == 'distance':
-        if not patient_loc_missing:
+        if patient_loc_missing:
+            # Fallback to sorting by rating
+            final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
+        else:
+            # Sort by distance (index 4), putting "None" distances at the end
             final_results.sort(key=lambda x: (x[4] is None, x[4]))
-    elif sort_by == 'rating':
+    elif sort_by == 'rating': # Make this an explicit check
+        # Sort by rating (index 1), putting "None" ratings at the end
         final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
-    # else: leave DB order
+    # else: (if sort_by is 'default') ... do nothing. The results will be in DB order.
+    # --- END FIX ---
 
-    return render_template('search_results.html',
-                           results=final_results,
-                           specialty=specialty,
+    return render_template('search_results.html', 
+                           results=final_results, 
+                           specialty=specialty, 
                            min_rating=min_rating,
                            sort_by=sort_by)
 
@@ -719,13 +784,12 @@ def bill_action(appointment_id, action):
         return redirect(url_for('doctor_dashboard'))
 
     if action == 'pay':
-        if apt.bill_status == 'Unpaid':
+        if apt.bill_status in ['Unpaid', 'Pending Insurance']: # <-- Allow marking as paid even if pending
             apt.bill_status = 'Paid'
             db.session.commit()
             flash(f'Bill for {apt.patient.full_name} marked as paid.', 'success')
         else:
-            # Fixed quoting to avoid syntax error
-            flash("Bill is not in an 'Unpaid' state.", 'info')
+            flash('Bill is not in a state that can be marked as paid.', 'info')
     else:
         flash('Invalid action.', 'danger')
 
