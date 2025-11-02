@@ -8,7 +8,8 @@ Loop Healthcare is a comprehensive healthcare management platform designed to st
 
 _A link to a screen recording video will be added here._
 
-[Watch Demo Video](https://www.loom.com/share/20d8b3162c524b0dba8909806d9f7374) <!-- Replace DRIVE_LINK_HERE with your actual Drive link -->
+[Watch Demo Video 1](https://www.loom.com/share/20d8b3162c524b0dba8909806d9f7374)
+[Watch Demo Video 2](https://www.loom.com/share/0d849932383a43b9b89497b83534f607)<!-- Replace DRIVE_LINK_HERE with your actual Drive link -->
 
 The screen recording video will provide a full walkthrough of the platform, demonstrating its major features and how users from different roles—patients, doctors, and administrators—can benefit from Loop Healthcare. Watching the demo will help new users get an immediate understanding of the platform’s interface and capabilities, while also serving as a reference for contributors and stakeholders interested in the project’s development.
 
