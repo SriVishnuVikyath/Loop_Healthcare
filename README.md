@@ -174,13 +174,13 @@ Loop_Healthcare/
 
 ## Technology Stack 🖥️
 
-| Layer        | Technology      | Purpose                                 |
+| Layer        | Technology     | Purpose                                 |
 |--------------|----------------|-----------------------------------------|
 | Backend      | Python         | Core logic, APIs, data processing       |
 | Frontend     | HTML, CSS, JS  | User interface and interactions         |
 | Database     | (Configurable) | Data storage (e.g., SQLite, PostgreSQL) |
 | Templates    | Jinja2         | Dynamic HTML rendering                  |
-| Others       | Flask/Django*  | Web framework (if applicable)           |
+| Others       | Flask          | Web framework (if applicable)           |
 
 *The backend framework (Flask or Django) depends on your actual implementation.
 
