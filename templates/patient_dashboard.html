@@ -118,7 +118,9 @@
                         <b>${{ "%.2f"|format(apt.bill_amount) }}</b> for {{ apt.bill_description or 'consultation' }}<br>
                         <small>with {{ apt.doctor.full_name }} on {{ apt.appointment_time.strftime('%Y-%m-%d') }}</small>
                     </div>
-                    <div>
+                    <!-- UPDATED: Added View Invoice link and wrapped buttons -->
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <a href="{{ url_for('generate_invoice_pdf', appointment_id=apt.id) }}" target="_blank" class="btn-secondary" style="text-decoration: none; padding: 10px 15px; border-radius: 6px;">View Invoice</a>
                         {% if apt.bill_status == 'Unpaid' %}
                             <a href="{{ url_for('pay_bill', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; padding: 10px 15px; border-radius: 6px;">Pay Bill</a>
                         {% elif apt.bill_status == 'Pending Insurance' %}
@@ -156,7 +158,9 @@
                         <b>${{ "%.2f"|format(apt.bill_amount) }}</b> for {{ apt.bill_description or 'consultation' }}<br>
                         <small>with {{ apt.doctor.full_name }} on {{ apt.appointment_time.strftime('%Y-%m-%d') }}</small>
                     </div>
-                    <div>
+                    <!-- UPDATED: Added View Invoice link -->
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <a href="{{ url_for('generate_invoice_pdf', appointment_id=apt.id) }}" target="_blank" class="btn-secondary" style="text-decoration: none; padding: 10px 15px; border-radius: 6px;">View Invoice</a>
                         <span style="font-weight: 600; color: green;">(Paid)</span>
                     </div>
                 </div>

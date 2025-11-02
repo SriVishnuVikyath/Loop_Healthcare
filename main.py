@@ -1,6 +1,6 @@
 import os
 import uuid
-from flask import Flask, render_template, request, redirect, url_for, flash, abort, g, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, g, send_from_directory, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_bcrypt import Bcrypt
@@ -10,6 +10,7 @@ from sqlalchemy.sql.expression import extract
 import datetime
 from geopy.distance import great_circle
 from sqlalchemy import or_ # <-- IMPORT or_
+from fpdf import FPDF # <-- NEW: Import for PDF generation
 
 # --- App Setup (Unchanged) ---
 app = Flask(__name__)
@@ -953,8 +954,7 @@ def upload_file(patient_id):
 @app.route('/uploads/<path:filename>')
 @login_required
 def get_file(filename):
-    """Securely serves an uploaded file."""
-    
+    # --- FIX: Restore the g.profile setup logic ---
     if current_user.role == 'patient':
         g.profile = current_user.patient_profile
     elif current_user.role == 'doctor':
@@ -964,7 +964,7 @@ def get_file(filename):
     
     medical_file = db.session.scalar(db.select(MedicalFile).where(MedicalFile.filename == filename))
     if not medical_file:
-        abort(44)
+        abort(404)
 
     is_authorized = False
     if current_user.role == 'patient':
@@ -976,6 +976,18 @@ def get_file(filename):
             is_authorized = True
         elif medical_file.patient in g.profile.permitted_patients:
             is_authorized = True
+    
+    # --- NEW: Allow insurance to see files for patients they have claims with ---
+    elif current_user.role == 'insurance':
+        # Check if this insurance company has any appointments (claims) with this patient
+        has_claim = db.session.scalar(db.select(Appointment).where(
+            Appointment.patient_id == medical_file.patient_id,
+            Appointment.insurance_id == g.profile.id
+        ).limit(1))
+        
+        if has_claim:
+            is_authorized = True
+    # --- END NEW ---
             
     if not is_authorized:
         abort(403)
@@ -989,6 +1001,128 @@ def get_file(filename):
         )
     except FileNotFoundError:
         abort(404)
+
+# --- NEW: Route to generate PDF invoice ---
+@app.route('/generate_invoice_pdf/<int:appointment_id>')
+@login_required
+def generate_invoice_pdf(appointment_id):
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt:
+        abort(44)
+        
+    # Authorize: Must be the patient or the doctor
+    is_authorized = False
+    # --- FIX: Check against current_user.profile directly instead of g.profile ---
+    if current_user.role == 'patient' and apt.patient_id == current_user.patient_profile.id:
+        is_authorized = True
+    elif current_user.role == 'doctor' and apt.doctor_id == current_user.doctor_profile.id:
+        is_authorized = True
+    # --- NEW: Allow insurance company to view if claim is theirs ---
+    elif current_user.role == 'insurance' and apt.insurance_id == current_user.insurance_profile.id:
+        is_authorized = True
+    # --- END FIX ---
+        
+    if not is_authorized:
+        abort(403)
+        
+    if apt.bill_status == 'Unbilled':
+        flash('This bill has not been generated yet.', 'danger')
+        return redirect(url_for('patient_dashboard'))
+        
+    # Find the most recent diagnosis from this doctor for this patient
+    # This is an approximation, as records aren't directly linked to appointments
+    record = db.session.scalar(
+        db.select(MedicalRecord)
+        .where(
+            MedicalRecord.patient_id == apt.patient_id,
+            MedicalRecord.doctor_id == apt.doctor_id
+        )
+        .order_by(MedicalRecord.created_at.desc())
+        .limit(1)
+    )
+    
+    # --- Generate PDF ---
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Title
+    pdf.set_font('Arial', 'B', 20)
+    pdf.cell(0, 15, 'Medical Invoice', ln=True, align='C')
+    pdf.ln(10)
+    
+    # Header Info
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(40, 8, 'Patient:', border=1)
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, f' {apt.patient.full_name}', border=1, ln=True)
+    
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(40, 8, 'Doctor:', border=1)
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, f' {apt.doctor.full_name} ({apt.doctor.specialty})', border=1, ln=True)
+    
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(40, 8, 'Appointment:', border=1)
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, f' {apt.appointment_time.strftime("%Y-%m-%d %I:%M %p")}', border=1, ln=True)
+    
+    pdf.ln(10)
+    
+    # Body / Items
+    pdf.set_font('Arial', 'B', 12)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(130, 10, 'Description', border=1, fill=True)
+    pdf.cell(0, 10, 'Amount', border=1, fill=True, ln=True, align='R')
+    
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(130, 10, f' {apt.bill_description or "Consultation"}', border=1)
+    pdf.cell(0, 10, f' ${apt.bill_amount:.2f}', border=1, ln=True, align='R')
+    
+    # Diagnosis (if found)
+    if record:
+        pdf.cell(130, 10, f' Related Diagnosis: {record.diagnosis}', border=1)
+        pdf.cell(0, 10, '', border=1, ln=True, align='R')
+        
+    pdf.ln(5)
+    
+    # Total
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(130, 12, 'Total Due:', align='R')
+    pdf.cell(0, 12, f' ${apt.bill_amount:.2f}', align='R', ln=True)
+    
+    pdf.ln(10)
+    
+    # Status
+    pdf.set_font('Arial', 'B', 14)
+    status_text = apt.bill_status
+    if apt.bill_status == 'Pending Insurance':
+        status_text = f"Pending (Claim {apt.insurance_claim_status})"
+    elif apt.bill_status == 'Paid':
+         if apt.insurance_claim_status == 'Accepted':
+             status_text = f"Paid (via {apt.insurance_company.company_name})"
+         else:
+             status_text = "Paid (by Patient)"
+             
+    pdf.cell(0, 10, f'Status: {status_text}', ln=True, align='C')
+
+    # --- NEW: Add computer generated footer ---
+    pdf.set_y(-15) # Position 1.5 cm from bottom
+    pdf.set_font('Arial', 'I', 8)
+    pdf.cell(0, 10, 'This is a computer-generated invoice and requires no signature.', 0, 0, 'C')
+    # --- END NEW FOOTER ---
+
+    # --- Create Flask response ---
+    try:
+        # FPDF output as string, encode to latin-1 for binary blob
+        pdf_content = pdf.output(dest='S').encode('latin-1')
+        response = make_response(pdf_content)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename=Invoice-{apt.id}.pdf'
+        return response
+    except Exception as e:
+        app.logger.error(f"Error generating PDF: {e}")
+        abort(500)
+
 
 # --- Insurance Routes (UPDATED) ---
 @app.route("/insurance_dashboard")
@@ -1051,5 +1185,3 @@ def forbidden(e):
 # --- Run the App ---
 if __name__ == '__main__':
     app.run(debug=True)
-
-

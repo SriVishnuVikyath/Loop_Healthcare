@@ -13,7 +13,9 @@
                     Service: {{ claim.bill_description or 'Consultation' }} on {{ claim.appointment_time.strftime('%Y-%m-%d') }}<br>
                     <b>Amount: ${{ "%.2f"|format(claim.bill_amount) }}</b>
                 </div>
-                <div>
+                <!-- UPDATED: Added View Invoice and wrapped in a div -->
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="{{ url_for('generate_invoice_pdf', appointment_id=claim.id) }}" target="_blank" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">View Invoice</a>
                     <a href="{{ url_for('process_claim', appointment_id=claim.id, action='accept') }}" class="btn" style="margin-right: 5px; text-decoration: none; padding: 12px 20px; border-radius: 6px;">Accept</a>
                     <a href="{{ url_for('process_claim', appointment_id=claim.id, action='reject') }}" class="btn-danger" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">Reject</a>
                 </div>
@@ -32,7 +34,9 @@
                     Service: {{ claim.bill_description or 'Consultation' }}<br>
                     Amount: ${{ "%.2f"|format(claim.bill_amount) }}
                 </div>
-                <div>
+                <!-- UPDATED: Added View Invoice and wrapped in a div -->
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a href="{{ url_for('generate_invoice_pdf', appointment_id=claim.id) }}" target="_blank" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">View Invoice</a>
                     {% if claim.insurance_claim_status == 'Accepted' %}
                         <span style="font-weight: 600; color: green; font-size: 1.1rem;">(ACCEPTED & PAID)</span>
                     {% elif claim.insurance_claim_status == 'Rejected' %}
