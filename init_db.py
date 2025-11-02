@@ -2,6 +2,7 @@ import os
 from main import app, db, bcrypt, User, PatientProfile, DoctorProfile, InsuranceProfile, DoctorReview
 from faker import Faker
 import random
+import datetime # Import datetime
 
 fake = Faker()
 
@@ -33,13 +34,17 @@ def create_fake_data():
         db.session.add(user)
         db.session.commit() # Commit to get user.id
 
+        # --- UPDATED: Add availability info ---
         profile = DoctorProfile(
             full_name=full_name,
             phone=fake.phone_number(),
             specialty=random.choice(SPECIALTIES),
             practice_address=fake.address(),
             pincode=fake.zipcode()[:5],
-            user_id=user.id
+            user_id=user.id,
+            availability_start_time=datetime.time(9, 0),  # Default 9 AM
+            availability_end_time=datetime.time(17, 0), # Default 5 PM
+            slot_duration_minutes=random.choice([15, 30, 60]) # Randomize slot times
         )
         db.session.add(profile)
         doctors.append(profile)
@@ -134,7 +139,14 @@ def create_fake_data():
     user = User(email=email, password_hash=hashed_password, role='doctor')
     db.session.add(user)
     db.session.commit()
-    profile = DoctorProfile(full_name="Dr. Test", phone="9876543210", specialty="Cardiologist", practice_address="456 Test Ave", pincode="10001", user_id=user.id)
+    # --- UPDATED: Add availability to test doctor ---
+    profile = DoctorProfile(
+        full_name="Dr. Test", phone="9876543210", specialty="Cardiologist", 
+        practice_address="456 Test Ave", pincode="10001", user_id=user.id,
+        availability_start_time=datetime.time(9, 0),
+        availability_end_time=datetime.time(17, 0),
+        slot_duration_minutes=30
+    )
     db.session.add(profile)
     
     db.session.commit()
@@ -159,5 +171,3 @@ if __name__ == "__main__":
             clear_database()
             create_fake_data()
         print("Database 'site.db' created and populated.")
-
-

@@ -7,23 +7,53 @@
     <p>{{ doctor.practice_address }}</p>
 
     <div class="row">
+        <!-- UPDATED: Booking Column -->
         <div class="col-md-6">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Schedule a Time</h5>
-                    <form method="POST">
-                        <div class="mb-3">
-                            <label for="appointment_time" class="form-label">Select Date and Time</label>
-                            <input type="datetime-local" class="form-control" id="appointment_time" name="appointment_time" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Request Appointment</button>
-                        <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary">Cancel</a>
-                    </form>
+                    <h5 class="card-title">1. Select a Date</h5>
+                    <div class="form-group">
+                        <label for="appointment_date">Pick a day to see available slots:</label>
+                        <!-- UPDATED: Set min attribute to the variable from Flask -->
+                        <input type="date" id="appointment_date" class="form-control" 
+                               value="{{ selected_date.isoformat() if selected_date else '' }}"
+                               min="{{ today_date }}">
+                    </div>
+
+                    <!-- This section only appears if a date is selected -->
+                    {% if selected_date %}
+                        <hr>
+                        <h5 class="card-title">2. Select an Available Slot</h5>
+                        <p>Showing slots for: <b>{{ selected_date.strftime('%A, %B %d, %Y') }}</b></p>
+                        
+                        {% if available_slots %}
+                            <!-- This is the form that submits the booking -->
+                            <form method="POST">
+                                <div class="form-group">
+                                    <label for="appointment_slot">Choose a time:</label>
+                                    <select name="appointment_slot" id="appointment_slot" class="form-control" required>
+                                        {% for slot in available_slots %}
+                                            <!-- The value is the full ISO timestamp, the text is human-readable -->
+                                            <option value="{{ slot.isoformat() }}">{{ slot.strftime('%I:%M %p') }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Request Appointment</button>
+                                <a href="{{ url_for('patient_dashboard') }}" class="btn btn-secondary">Cancel</a>
+                            </form>
+                        {% else %}
+                            <div class="alert alert-info">
+                                No available slots found for this date. This may be because the doctor is fully booked, has not set their availability, or the day is in the past.
+                            </div>
+                        {% endif %}
+                    {% endif %}
+
                 </div>
             </div>
         </div>
+        
+        <!-- Reviews Column (Unchanged) -->
         <div class="col-md-6">
-            <!-- NEW: This section displays reviews -->
             <h4>Anonymous Patient Reviews</h4>
             <div style="max-height: 400px; overflow-y: auto;">
                 {% if reviews %}
@@ -44,8 +74,21 @@
                     <p>No reviews available for this doctor yet.</p>
                 {% endif %}
             </div>
-            <!-- END NEW SECTION -->
         </div>
     </div>
 </div>
+
+<!-- NEW: JavaScript to reload the page when a date is selected -->
+<script>
+    document.getElementById('appointment_date').addEventListener('change', function() {
+        if (this.value) {
+            // Get the base URL for the book_appointment route
+            const baseUrl = "{{ url_for('book_appointment', doctor_id=doctor.id) }}";
+            // Reload the page with the selected date as a query parameter
+            // FIX: Correctly append the query parameter
+            window.location.href = baseUrl + "?date=" + this.value;
+        }
+    });
+</script>
 {% endblock %}
+

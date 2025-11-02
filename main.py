@@ -52,7 +52,6 @@ class PatientProfile(db.Model):
     phone = db.Column(db.String(20))
     address = db.Column(db.String(200))
     pincode = db.Column(db.String(10))
-    # --- NEW ---
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     
@@ -73,10 +72,14 @@ class DoctorProfile(db.Model):
     specialty = db.Column(db.String(100))
     practice_address = db.Column(db.String(200))
     pincode = db.Column(db.String(10))
-    # --- NEW ---
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    max_appointments_per_day = db.Column(db.Integer, nullable=False, default=15)
+    
+    # --- NEW: Availability Fields ---
+    availability_start_time = db.Column(db.Time) # e.g., 09:00:00
+    availability_end_time = db.Column(db.Time)   # e.g., 17:00:00
+    slot_duration_minutes = db.Column(db.Integer, default=30)
+    # --- REMOVED: max_appointments_per_day (no longer needed) ---
     
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
     
@@ -112,6 +115,10 @@ class Appointment(db.Model):
     status = db.Column(db.String(20), nullable=False, default='Pending') # Pending, Confirmed, Cancelled, Completed
     patient_id = db.Column(db.Integer, db.ForeignKey('patient_profile.id'), nullable=False)
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctor_profile.id'), nullable=False)
+    # --- NEW: Unique constraint for doctor and time ---
+    # This ensures only one patient can book a specific slot with a doctor
+    __table_args__ = (db.UniqueConstraint('doctor_id', 'appointment_time', name='_doctor_time_uc'),)
+
 
 class DoctorReview(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -167,7 +174,6 @@ def home():
 
 @app.route("/register", methods=['GET', 'POST'])
 def register():
-    # ... (This route is unchanged) ...
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     
@@ -193,15 +199,19 @@ def register():
         if role == 'patient':
             profile = PatientProfile(full_name=full_name, phone=phone, address=address, pincode=pincode, user_id=new_user.id)
         elif role == 'doctor':
-            profile = DoctorProfile(full_name=full_name, phone=phone, practice_address=address, pincode=pincode, user_id=new_user.id, specialty=request.form.get('specialty', 'General'))
+            # --- UPDATED: Set default availability ---
+            profile = DoctorProfile(
+                full_name=full_name, phone=phone, practice_address=address, pincode=pincode, user_id=new_user.id, 
+                specialty=request.form.get('specialty', 'General'),
+                availability_start_time=datetime.time(9, 0), # Default 9 AM
+                availability_end_time=datetime.time(17, 0), # Default 5 PM
+                slot_duration_minutes=30 # Default 30 mins
+            )
         elif role == 'insurance':
             profile = InsuranceProfile(company_name=full_name, phone=phone, company_address=address, pincode=pincode, user_id=new_user.id)
         
         if profile:
             db.session.add(profile)
-            # We would normally geocode the address here, but
-            # we will skip it for live registration to keep it fast.
-            # Geocoding is only done in init_db.py for this demo.
             db.session.commit()
             flash(f'Account created for {email} as a {role}. You can now log in.', 'success')
             return redirect(url_for('login'))
@@ -282,7 +292,7 @@ def patient_dashboard():
                            permissioned_doctors=permissioned_doctors,
                            doctors_to_review=doctors_to_review)
 
-# --- REFACTORED/FIXED SEARCH ROUTE ---
+# (Search Route Unchanged)
 @app.route("/search_doctors", methods=['POST'])
 @login_required
 @role_required('patient')
@@ -292,7 +302,6 @@ def search_doctors():
     min_rating = int(request.form.get('min_rating', 0))
     sort_by = request.form.get('sort_by', 'rating')
 
-    # Handle missing patient location
     patient_loc_missing = False
     patient_coords = None
     if not g.profile.latitude or not g.profile.longitude:
@@ -301,8 +310,6 @@ def search_doctors():
     else:
         patient_coords = (g.profile.latitude, g.profile.longitude)
 
-    # --- NEW LOGIC ---
-    # 1. Create a subquery for all average ratings
     avg_ratings_subquery = db.select(
         DoctorReview.doctor_id,
         func.avg(DoctorReview.overall_rating).label('avg_overall'),
@@ -310,7 +317,6 @@ def search_doctors():
         func.avg(DoctorReview.hospitality_rating).label('avg_hospitality')
     ).group_by(DoctorReview.doctor_id).subquery()
 
-    # 2. Start base query by LEFT JOINing doctors and their ratings
     query = db.select(
         DoctorProfile,
         avg_ratings_subquery.c.avg_overall,
@@ -322,22 +328,17 @@ def search_doctors():
         isouter=True # This is a LEFT JOIN
     )
 
-    # 3. Apply filters to the combined query
     if specialty:
         query = query.where(DoctorProfile.specialty.ilike(f'%{specialty}%'))
 
     if min_rating > 0:
-        # Filter out doctors who have a rating < min_rating
-        # (This implicitly filters out doctors with no rating, as 'None < 7' is false)
         query = query.where(avg_ratings_subquery.c.avg_overall >= min_rating)
     
-    # Execute the query
     results = db.session.execute(query).all()
     
-    # 4. Package results and calculate distance in Python
     final_results = []
     for row in results:
-        doctor = row.DoctorProfile # Access by model name
+        doctor = row.DoctorProfile
         avg_overall = row.avg_overall
         avg_cost = row.avg_cost
         avg_hospitality = row.avg_hospitality
@@ -348,18 +349,13 @@ def search_doctors():
             distance_km = great_circle(patient_coords, doctor_coords).km
         
         final_results.append((doctor, avg_overall, avg_cost, avg_hospitality, distance_km))
-    # --- END NEW LOGIC ---
 
-    # 5. Sort the results in Python
     if sort_by == 'distance':
         if patient_loc_missing:
-            # Fallback to sorting by rating
             final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
         else:
-            # Sort by distance (index 4), putting "None" distances at the end
             final_results.sort(key=lambda x: (x[4] is None, x[4]))
     else: # Default to 'rating'
-        # Sort by rating (index 1), putting "None" ratings at the end
         final_results.sort(key=lambda x: (x[1] is None, x[1]), reverse=True)
 
     return render_template('search_results.html', 
@@ -368,7 +364,52 @@ def search_doctors():
                            min_rating=min_rating,
                            sort_by=sort_by)
 
-# --- UPDATED BOOKING ROUTE ---
+
+# --- NEW: Helper function to get available slots ---
+def get_available_slots(doctor, selected_date):
+    """
+    Calculates the available appointment slots for a given doctor on a specific date.
+    """
+    if not doctor.availability_start_time or not doctor.availability_end_time or not doctor.slot_duration_minutes:
+        return [] # Doctor has not set up their availability
+
+    # Get all 'Pending' or 'Confirmed' appointments for this doctor on this day
+    booked_appointments = db.session.scalars(
+        db.select(Appointment)
+        .where(
+            Appointment.doctor_id == doctor.id,
+            extract('year', Appointment.appointment_time) == selected_date.year,
+            extract('month', Appointment.appointment_time) == selected_date.month,
+            extract('day', Appointment.appointment_time) == selected_date.day,
+            Appointment.status.in_(['Pending', 'Confirmed'])
+        )
+    ).all()
+    
+    # Create a set of booked datetimes for fast lookup
+    booked_times = {apt.appointment_time for apt in booked_appointments}
+
+    available_slots = []
+    
+    # Combine the selected date with the doctor's start time
+    current_slot_time = datetime.datetime.combine(selected_date, doctor.availability_start_time)
+    
+    # Combine the selected date with the doctor's end time
+    end_time = datetime.datetime.combine(selected_date, doctor.availability_end_time)
+    
+    slot_delta = datetime.timedelta(minutes=doctor.slot_duration_minutes)
+    now = datetime.datetime.now()
+
+    while current_slot_time < end_time:
+        # Check if the slot is in the future and not in the booked set
+        if current_slot_time > now and current_slot_time not in booked_times:
+            available_slots.append(current_slot_time)
+        
+        current_slot_time += slot_delta
+
+    return available_slots
+
+
+# --- HEAVILY UPDATED BOOKING ROUTE ---
 @app.route("/book_appointment/<int:doctor_id>", methods=['GET', 'POST'])
 @login_required
 @role_required('patient')
@@ -378,34 +419,27 @@ def book_appointment(doctor_id):
         flash('Doctor not found.', 'danger')
         return redirect(url_for('patient_dashboard'))
 
+    # --- POST: Handle the booking submission ---
     if request.method == 'POST':
         try:
-            apt_time_str = request.form.get('appointment_time')
+            apt_time_str = request.form.get('appointment_slot')
             apt_time = datetime.datetime.fromisoformat(apt_time_str)
-            apt_date = apt_time.date() # Get just the date part
             
             if apt_time < datetime.datetime.now():
                 flash('Cannot book an appointment in the past.', 'danger')
-                return render_template('book_appointment.html', doctor=doctor)
+                return redirect(url_for('book_appointment', doctor_id=doctor.id, date=apt_time.date().isoformat()))
 
-            # --- NEW: Check for appointment limits ---
-            # Count existing confirmed or pending appointments for this doctor on this day
-            existing_appointments_count = db.session.scalar(
-                db.select(func.count(Appointment.id))
-                .where(
-                    Appointment.doctor_id == doctor.id,
-                    extract('year', Appointment.appointment_time) == apt_date.year,
-                    extract('month', Appointment.appointment_time) == apt_date.month,
-                    extract('day', Appointment.appointment_time) == apt_date.day,
-                    Appointment.status.in_(['Pending', 'Confirmed'])
-                )
-            )
-
-            if existing_appointments_count >= doctor.max_appointments_per_day:
-                flash(f'{doctor.full_name} is fully booked for {apt_date.strftime("%Y-%m-%d")}. Please choose another day.', 'danger')
-                # --- Pass reviews to template even on error ---
-                reviews = doctor.reviews.order_by(DoctorReview.created_at.desc()).all()
-                return render_template('book_appointment.html', doctor=doctor, reviews=reviews)
+            # --- NEW: Check if this *exact* slot is already taken ---
+            # This is a critical check to prevent double-booking
+            existing_apt = db.session.scalar(db.select(Appointment).where(
+                Appointment.doctor_id == doctor.id,
+                Appointment.appointment_time == apt_time,
+                Appointment.status.in_(['Pending', 'Confirmed'])
+            ))
+            
+            if existing_apt:
+                flash(f'This slot ({apt_time.strftime("%I:%M %p")}) was just booked by someone else. Please select a different slot.', 'danger')
+                return redirect(url_for('book_appointment', doctor_id=doctor.id, date=apt_time.date().isoformat()))
             # --- END NEW CHECK ---
 
             new_apt = Appointment(
@@ -418,13 +452,41 @@ def book_appointment(doctor_id):
             db.session.commit()
             flash(f'Appointment request sent to {doctor.full_name} for {apt_time.strftime("%Y-%m-%d %I:%M %p")}.', 'success')
             return redirect(url_for('patient_dashboard'))
+        
+        except ValueError:
+            flash('Invalid slot selected.', 'danger')
+        except Exception as e:
+            db.session.rollback() # Rollback if the unique constraint fails
+            flash(f'An error occurred. It\'s possible this slot was just booked. Please try again.', 'danger')
+            return redirect(url_for('book_appointment', doctor_id=doctor_id))
+
+    # --- GET: Show available slots for a given date ---
+    selected_date_str = request.args.get('date')
+    selected_date = None
+    available_slots = []
+    
+    if selected_date_str:
+        try:
+            selected_date = datetime.date.fromisoformat(selected_date_str)
+            if selected_date < datetime.date.today():
+                flash('Cannot book appointments for past dates.', 'danger')
+            else:
+                available_slots = get_available_slots(doctor, selected_date)
         except ValueError:
             flash('Invalid date format.', 'danger')
     
-    # --- NEW: Fetch reviews for this doctor ---
+    # --- NEW: Get today's date for the min attribute ---
+    today_date = datetime.date.today().isoformat()
+    
+    # Fetch reviews for this doctor (unchanged)
     reviews = doctor.reviews.order_by(DoctorReview.created_at.desc()).all()
     
-    return render_template('book_appointment.html', doctor=doctor, reviews=reviews)
+    return render_template('book_appointment.html', 
+                           doctor=doctor, 
+                           reviews=reviews,
+                           selected_date=selected_date,
+                           available_slots=available_slots,
+                           today_date=today_date) # <-- Pass today's date to the template
 
 # (Manage Permissions Route is Unchanged)
 @app.route("/manage_permissions", methods=['POST'])
@@ -506,7 +568,7 @@ def leave_review(doctor_id):
     return render_template('leave_review.html', doctor=doctor)
 
 
-# (Doctor Dashboard Route is Unchanged)
+# --- Doctor Routes (UPDATED) ---
 @app.route("/doctor_dashboard")
 @login_required
 @role_required('doctor')
@@ -521,6 +583,44 @@ def doctor_dashboard():
                            pending_apts=pending_apts, 
                            confirmed_apts=confirmed_apts,
                            completed_apts=completed_apts)
+
+# --- NEW: Route to manage availability ---
+@app.route("/manage_availability", methods=['POST'])
+@login_required
+@role_required('doctor')
+def manage_availability():
+    try:
+        start_time_str = request.form.get('start_time') # "HH:MM"
+        end_time_str = request.form.get('end_time')   # "HH:MM"
+        duration = int(request.form.get('slot_duration', 30))
+
+        if not start_time_str or not end_time_str:
+            flash('Start time and end time are required.', 'danger')
+            return redirect(url_for('doctor_dashboard'))
+
+        start_time = datetime.time.fromisoformat(start_time_str)
+        end_time = datetime.time.fromisoformat(end_time_str)
+
+        if start_time >= end_time:
+            flash('Start time must be before end time.', 'danger')
+            return redirect(url_for('doctor_dashboard'))
+        
+        if duration < 10:
+            flash('Slot duration must be at least 10 minutes.', 'danger')
+            duration = 10
+
+        g.profile.availability_start_time = start_time
+        g.profile.availability_end_time = end_time
+        g.profile.slot_duration_minutes = duration
+        
+        db.session.commit()
+        flash('Availability updated successfully.', 'success')
+
+    except Exception as e:
+        flash(f'Error updating availability: {e}', 'danger')
+    
+    return redirect(url_for('doctor_dashboard'))
+
 
 # (Appointment Action Route is Unchanged)
 @app.route("/appointment_action/<int:appointment_id>/<string:action>")
@@ -657,7 +757,6 @@ def get_file(filename):
     
     medical_file = db.session.scalar(db.select(MedicalFile).where(MedicalFile.filename == filename))
     if not medical_file:
-        # --- FIX: Changed 4What to 404 ---
         abort(404)
 
     is_authorized = False

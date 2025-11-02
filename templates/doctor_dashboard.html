@@ -4,6 +4,27 @@
     <p>Welcome, <b>{{ g.profile.full_name }}</b> ({{ current_user.email }})</p>
     <p>Your specialty: {{ g.profile.specialty }}</p>
 
+    <!-- NEW: Manage Availability Card -->
+    <div class="card">
+        <div class="card-header">Manage Your Availability</div>
+        <form action="{{ url_for('manage_availability') }}" method="POST" style="padding: 15px;">
+            <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+                <label for="start_time" style="margin-right: 10px;">Daily Start Time</label>
+                <!-- Pre-fill with existing data, format as HH:MM string -->
+                <input type="time" id="start_time" name="start_time" value="{{ g.profile.availability_start_time.strftime('%H:%M') if g.profile.availability_start_time else '09:00' }}" required>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+                <label for="end_time" style="margin-right: 10px;">Daily End Time</label>
+                <input type="time" id="end_time" name="end_time" value="{{ g.profile.availability_end_time.strftime('%H:%M') if g.profile.availability_end_time else '17:00' }}" required>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; justify-content: space-between;">
+                <label for="slot_duration" style="margin-right: 10px;">Slot Duration (minutes)</label>
+                <input type="number" id="slot_duration" name="slot_duration" value="{{ g.profile.slot_duration_minutes or 30 }}" min="10" step="5" required>
+            </div>
+            <button type="submit" class="btn-secondary">Update Availability</button>
+        </form>
+    </div>
+
     <div class="card">
         <div class="card-header">Pending Appointments</div>
         {% for apt in pending_apts %}
