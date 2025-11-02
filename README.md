@@ -28,7 +28,6 @@ Loop Healthcare is an innovative solution designed to streamline, manage, and en
 - [Contributing](#contributing-)
 - [License](#license-)
 - [Contact and Support](#contact-and-support-)
-- [Acknowledgements](#acknowledgements-)
 - [FAQs](#faqs-)
 
 ---
@@ -180,9 +179,8 @@ Loop_Healthcare/
 | Frontend     | HTML, CSS, JS  | User interface and interactions         |
 | Database     | (Configurable) | Data storage (e.g., SQLite, PostgreSQL) |
 | Templates    | Jinja2         | Dynamic HTML rendering                  |
-| Others       | Flask          | Web framework (if applicable)           |
+| Others       | Flask          | Web framework                           |
 
-*The backend framework (Flask or Django) depends on your actual implementation.
 
 ---
 
@@ -267,17 +265,7 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for more 
 Questions, suggestions, or need help? Feel free to reach out:
 
 - **GitHub Issues:** [Report a bug or request a feature](https://github.com/SriVishnuVikyath/Loop_Healthcare/issues)
-- **Email:** [contact@example.com](mailto:contact@example.com)
-- **Community Chat:** (Coming soon!)
-
----
-
-## Acknowledgements 🙏
-
-- All contributors to this project.
-- Open source libraries and frameworks.
-- Healthcare professionals who provided domain expertise.
-- Inspiration from the global open-source and healthcare tech communities.
+- **Email:** [SriVishnuVikyath](srivishnuvikyath123@gmail.com) [Gururaj-Sajjan](gururajsajjan813@gmail.com)
 
 ---
 
@@ -302,7 +290,7 @@ Questions, suggestions, or need help? Feel free to reach out:
 > Open an issue on GitHub with a detailed description and steps to reproduce.
 
 ### 7. **Is there a demo available?**
-> A live demo may be available soon. Stay tuned!
+> A demo is available.
 
 ---
 
@@ -318,19 +306,6 @@ Loop Healthcare is more than just a project—it's a vision for accessible, secu
 
 ---
 
-## Screenshots 🖼️
-
-*(Add screenshots/gifs of the app in action here!)*
-
----
-
-## Version History 🕰️
-
-| Version | Date       | Description         |
-|---------|------------|---------------------|
-| 1.0.0   | YYYY-MM-DD | Initial release     |
-
----
 
 ## Roadmap 🗺️
 

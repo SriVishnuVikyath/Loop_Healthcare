@@ -1,0 +1,15 @@
+# requirements.txt for Loop_Healthcare
+
+Flask
+Flask-Login
+Flask-WTF
+Flask-SQLAlchemy
+Werkzeug
+WTForms
+itsdangerous
+Jinja2
+MarkupSafe
+email-validator
+psycopg2-binary
+gunicorn
+# Add or adjust packages as needed based on actual project imports
