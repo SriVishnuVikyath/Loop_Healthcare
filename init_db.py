@@ -34,7 +34,6 @@ def create_fake_data():
         db.session.add(user)
         db.session.commit() # Commit to get user.id
 
-        # --- UPDATED: Add availability info ---
         profile = DoctorProfile(
             full_name=full_name,
             phone=fake.phone_number(),
@@ -42,6 +41,7 @@ def create_fake_data():
             practice_address=fake.address(),
             pincode=fake.zipcode()[:5],
             user_id=user.id,
+            # --- NEW: Set default availability ---
             availability_start_time=datetime.time(9, 0),
             availability_end_time=datetime.time(17, 0),
             slot_duration_minutes=30
@@ -72,7 +72,42 @@ def create_fake_data():
         patients.append(profile)
 
     # --- Create Insurance Users (5) ---
-    for _ in range(5):
+    # --- UPDATED: Create the specific companies first ---
+    
+    # Mediclaim
+    email = "mediclaim@test.com"
+    password = "password"
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    user_m = User(email=email, password_hash=hashed_password, role='insurance')
+    db.session.add(user_m)
+    db.session.commit()
+    profile_m = InsuranceProfile(
+        company_name="Mediclaim", 
+        phone=fake.phone_number(), 
+        company_address=fake.address(), 
+        pincode=fake.zipcode()[:5], 
+        user_id=user_m.id
+    )
+    db.session.add(profile_m)
+
+    # TATA Insurance
+    email = "tata@test.com"
+    password = "password"
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    user_t = User(email=email, password_hash=hashed_password, role='insurance')
+    db.session.add(user_t)
+    db.session.commit()
+    profile_t = InsuranceProfile(
+        company_name="TATA Insurance", 
+        phone=fake.phone_number(), 
+        company_address=fake.address(), 
+        pincode=fake.zipcode()[:5], 
+        user_id=user_t.id
+    )
+    db.session.add(profile_t)
+    
+    # --- Create 3 other fake insurance users ---
+    for _ in range(3):
         company_name = fake.company()
         email = fake.email()
         password = 'password'
@@ -92,7 +127,7 @@ def create_fake_data():
         db.session.add(profile)
 
     db.session.commit()
-    print(f"Created {len(doctors)} doctors, {len(patients)} patients, and 5 insurance users.")
+    print(f"Created {len(doctors)} doctors, {len(patients)} patients, and 5 insurance users (including Mediclaim and TATA).")
 
     # --- Create Fake Reviews (50 total) ---
     reviews_count = 0
@@ -126,49 +161,59 @@ def create_fake_data():
     email = "patient@test.com"
     password = "password"
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    p_user = User(email=email, password_hash=hashed_password, role='patient')
-    db.session.add(p_user)
+    user_p = User(email=email, password_hash=hashed_password, role='patient')
+    db.session.add(user_p)
     db.session.commit()
-    p_profile = PatientProfile(full_name="Test Patient", phone="1234567890", address="123 Test St", pincode="10001", user_id=p_user.id)
-    db.session.add(p_profile)
+    profile_p = PatientProfile(full_name="Test Patient", phone="1234567890", address="123 Test St", pincode="10001", user_id=user_p.id)
+    db.session.add(profile_p)
     
     # Add one easy-to-test doctor
     email = "doctor@test.com"
     password = "password"
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
-    d_user = User(email=email, password_hash=hashed_password, role='doctor')
-    db.session.add(d_user)
+    user_d = User(email=email, password_hash=hashed_password, role='doctor')
+    db.session.add(user_d)
     db.session.commit()
-    d_profile = DoctorProfile(
+    profile_d = DoctorProfile(
         full_name="Dr. Test", 
         phone="9876543210", 
         specialty="Cardiologist", 
         practice_address="456 Test Ave", 
         pincode="10001", 
-        user_id=d_user.id,
+        user_id=user_d.id, # <-- FIXED: Was d_user.id, now user_d.id
         availability_start_time=datetime.time(9, 0),
         availability_end_time=datetime.time(17, 0),
         slot_duration_minutes=30
     )
-    db.session.add(d_profile)
+    db.session.add(profile_d)
     
-    db.session.commit()
-    
-    # --- NEW: Add a completed appointment to test billing ---
-    print("Adding test appointment for billing...")
+    # --- NEW: Add a completed appointment for patient@test.com ---
     completed_apt = Appointment(
-        appointment_time=datetime.datetime.now() - datetime.timedelta(days=2),
-        status='Completed',
-        patient_id=p_profile.id,
-        doctor_id=d_profile.id,
-        bill_amount=150.00,
-        bill_status='Unpaid',
-        bill_description='Standard Consultation'
+        appointment_time = datetime.datetime.now() - datetime.timedelta(days=2),
+        status = 'Completed',
+        patient_id = profile_p.id,
+        doctor_id = profile_d.id,
+        bill_amount = 150.00,
+        bill_status = 'Unpaid', # Start as Unpaid
+        bill_description = 'Annual Checkup'
     )
     db.session.add(completed_apt)
-    db.session.commit()
 
+    # --- NEW: Add another completed appointment for patient@test.com ---
+    completed_apt_2 = Appointment(
+        appointment_time = datetime.datetime.now() - datetime.timedelta(days=5),
+        status = 'Completed',
+        patient_id = profile_p.id,
+        doctor_id = doctors[0].id, # Different doctor
+        bill_amount = 300.00,
+        bill_status = 'Unpaid', # Start as Unpaid
+        bill_description = 'Specialist Consultation'
+    )
+    db.session.add(completed_apt_2)
+    
+    db.session.commit()
     print("Added test patient (patient@test.com) and test doctor (doctor@test.com). Password for both is 'password'.")
+    print("Added a completed, unpaid bill for 'Test Patient'.")
 
 
 if __name__ == "__main__":

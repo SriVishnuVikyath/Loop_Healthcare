@@ -69,8 +69,35 @@
                     <b>{{ apt.patient.full_name }}</b><br>
                     {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}
                 </div>
-                <div>
-                    <a href="{{ url_for('update_record', patient_id=apt.patient.id) }}" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px;">View History</a>
+                <div style="min-width: 350px; text-align: right;">
+                    <a href="{{ url_for('update_record', patient_id=apt.patient.id) }}" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px; margin-right: 5px;">View History</a>
+                    
+                    <!-- NEW: Billing Logic -->
+                    {% if apt.bill_status == 'Unbilled' %}
+                        <form action="{{ url_for('set_bill', appointment_id=apt.id) }}" method="POST" style="display: inline-flex; gap: 5px; margin-left: 5px;">
+                            <input type="number" step="0.01" name="bill_amount" placeholder="$ Amount" style="width: 80px; padding: 10px;" required>
+                            <input type="text" name="bill_description" placeholder="Description (e.g., 'Checkup')" style="width: 150px; padding: 10px;">
+                            <button type="submit" class="btn" style="padding: 10px;">Send Bill</button>
+                        </form>
+                    {% elif apt.bill_status == 'Unpaid' %}
+                        <span style="display: inline-block; padding: 12px; font-weight: 600;">(${{ "%.2f"|format(apt.bill_amount) }} - Unpaid)</span>
+                        <a href="{{ url_for('bill_action', appointment_id=apt.id, action='pay') }}" class="btn" style="text-decoration: none; padding: 12px 20px; border-radius: 6px; margin-left: 5px;">Mark as Paid</a>
+                    {% elif apt.bill_status == 'Pending Insurance' %}
+                        <!-- UPDATED: Show detailed claim status -->
+                        <span style="display: inline-block; padding: 12px; font-weight: 600; color: #666;">
+                            (${{ "%.2f"|format(apt.bill_amount) }} - Claim {{ apt.insurance_claim_status }} with {{ apt.insurance_company.company_name }})
+                        </span>
+                        {% if apt.insurance_claim_status == 'Rejected' %}
+                             <a href="{{ url_for('bill_action', appointment_id=apt.id, action='pay') }}" class="btn" style="text-decoration: none; padding: 12px 20px; border-radius: 6px; margin-left: 5px;">Mark as Paid</a>
+                        {% endif %}
+                    {% elif apt.bill_status == 'Paid' %}
+                        <span style="display: inline-block; padding: 12px; font-weight: 600; color: green;">
+                            (${{ "%.2f"|format(apt.bill_amount) }} - Paid
+                            {% if apt.insurance_claim_status == 'Accepted' %}(via {{ apt.insurance_company.company_name }}){% endif %})
+                        </span>
+                    {% endif %}
+                    <!-- END NEW: Billing Logic -->
+
                 </div>
             </div>
             

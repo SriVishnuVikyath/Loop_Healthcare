@@ -122,6 +122,13 @@ class Appointment(db.Model):
     bill_status = db.Column(db.String(20), nullable=False, default='Unbilled') # Unbilled, Unpaid, Paid, Pending Insurance
     bill_description = db.Column(db.Text)
     
+    # --- NEW: Fields for Insurance Claim ---
+    insurance_id = db.Column(db.Integer, db.ForeignKey('insurance_profile.id'), nullable=True)
+    insurance_claim_status = db.Column(db.String(20), nullable=False, default='None') # None, Pending, Accepted, Rejected
+
+    # Link to the insurance company
+    insurance_company = db.relationship('InsuranceProfile', backref='claims', foreign_keys=[insurance_id])
+    
     # --- NEW: Unique constraint for doctor and time ---
     # This ensures only one patient can book a specific slot with a doctor
     __table_args__ = (db.UniqueConstraint('doctor_id', 'appointment_time', name='_doctor_time_uc'),)
@@ -324,7 +331,10 @@ def pay_bill(appointment_id):
         flash('This bill is not currently marked as unpaid.', 'info')
         return redirect(url_for('patient_dashboard'))
     
-    return render_template('pay_bill.html', apt=apt)
+    # --- NEW: Get all insurance companies to list them ---
+    insurance_companies = db.session.scalars(db.select(InsuranceProfile)).all()
+    
+    return render_template('pay_bill.html', apt=apt, insurance_companies=insurance_companies)
 
 @app.route("/pay_upi/<int:appointment_id>")
 @login_required
@@ -346,7 +356,7 @@ def pay_upi(appointment_id):
         
     return redirect(url_for('patient_dashboard'))
 
-@app.route("/claim_insurance/<int:appointment_id>")
+@app.route("/claim_insurance/<int:appointment_id>", methods=['POST']) # <-- UPDATED to POST
 @login_required
 @role_required('patient')
 def claim_insurance(appointment_id):
@@ -357,10 +367,24 @@ def claim_insurance(appointment_id):
     if apt.patient_id != g.profile.id:
         abort(403)
     
+    # --- NEW: Get the selected insurance company ID from the form ---
+    insurance_company_id = request.form.get('insurance_company_id')
+    if not insurance_company_id:
+        flash('You must select an insurance company.', 'danger')
+        return redirect(url_for('pay_bill', appointment_id=appointment_id))
+
+    company = db.session.get(InsuranceProfile, int(insurance_company_id))
+    if not company:
+        flash('Selected insurance company not found.', 'danger')
+        return redirect(url_for('pay_bill', appointment_id=appointment_id))
+    # --- END NEW ---
+    
     if apt.bill_status == 'Unpaid':
         apt.bill_status = 'Pending Insurance'
+        apt.insurance_id = company.id # <-- NEW: Link claim to company
+        apt.insurance_claim_status = 'Pending' # <-- NEW: Set claim status
         db.session.commit()
-        flash('Bill claim submitted to insurance for processing.', 'info')
+        flash(f'Bill claim submitted to {company.company_name} for processing.', 'info')
     else:
         flash('This bill is not currently marked as unpaid.', 'info')
         
@@ -931,12 +955,59 @@ def get_file(filename):
     except FileNotFoundError:
         abort(404)
 
-# (Insurance Dashboard and Error Handler are Unchanged)
+# --- Insurance Routes (UPDATED) ---
 @app.route("/insurance_dashboard")
 @login_required
 @role_required('insurance')
 def insurance_dashboard():
-    return render_template('insurance_dashboard.html')
+    # --- NEW: Find all claims submitted to this company ---
+    pending_claims = db.session.scalars(
+        db.select(Appointment).where(
+            Appointment.insurance_id == g.profile.id,
+            Appointment.insurance_claim_status == 'Pending'
+        ).order_by(Appointment.appointment_time.asc())
+    ).all()
+    
+    processed_claims = db.session.scalars(
+        db.select(Appointment).where(
+            Appointment.insurance_id == g.profile.id,
+            Appointment.insurance_claim_status.in_(['Accepted', 'Rejected'])
+        ).order_by(Appointment.appointment_time.desc())
+    ).all()
+
+    return render_template('insurance_dashboard.html',
+                           pending_claims=pending_claims,
+                           processed_claims=processed_claims)
+
+# --- NEW: Route for insurance to process a claim ---
+@app.route("/process_claim/<int:appointment_id>/<string:action>")
+@login_required
+@role_required('insurance')
+def process_claim(appointment_id, action):
+    apt = db.session.get(Appointment, appointment_id)
+    if not apt or apt.insurance_id != g.profile.id:
+        flash('Claim not found or not assigned to your company.', 'danger')
+        return redirect(url_for('insurance_dashboard'))
+
+    if apt.insurance_claim_status != 'Pending':
+        flash('This claim has already been processed.', 'info')
+        return redirect(url_for('insurance_dashboard'))
+
+    if action == 'accept':
+        apt.insurance_claim_status = 'Accepted'
+        apt.bill_status = 'Paid' # Mark the bill as Paid
+        db.session.commit()
+        flash(f'Claim for {apt.patient.full_name} (Amount: ${apt.bill_amount:.2f}) has been ACCEPTED and marked as Paid.', 'success')
+    elif action == 'reject':
+        apt.insurance_claim_status = 'Rejected'
+        apt.bill_status = 'Unpaid' # Mark the bill as Unpaid again so patient must pay
+        db.session.commit()
+        flash(f'Claim for {apt.patient.full_name} (Amount: ${apt.bill_amount:.2f}) has been REJECTED. Patient notified to pay.', 'danger')
+    else:
+        flash('Invalid action.', 'danger')
+
+    return redirect(url_for('insurance_dashboard'))
+
 
 @app.errorhandler(403)
 def forbidden(e):

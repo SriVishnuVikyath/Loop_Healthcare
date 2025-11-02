@@ -14,16 +14,31 @@
 
     <div class="card" style="max-width: 600px;">
         <div class="card-header">Choose Payment Method</div>
-        <div style="padding: 15px; display: flex; gap: 20px;">
-            <!-- This button simulates a successful UPI payment -->
-            <a href="{{ url_for('pay_upi', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; font-size: 1.1rem;">
-                Pay ${{ "%.2f"|format(apt.bill_amount) }} by UPI (Simulated)
-            </a>
+        <div style="padding: 15px; display: flex; flex-direction: column; gap: 20px;">
             
-            <!-- This button simulates submitting a claim to insurance -->
-            <a href="{{ url_for('claim_insurance', appointment_id=apt.id) }}" class="btn-secondary" style="text-decoration: none; font-size: 1.1rem;">
-                Claim with Insurance (Simulated)
-            </a>
+            <!-- Option 1: UPI Payment -->
+            <div>
+                <a href="{{ url_for('pay_upi', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; font-size: 1.1rem;">
+                    Pay ${{ "%.2f"|format(apt.bill_amount) }} by UPI (Simulated)
+                </a>
+            </div>
+            
+            <!-- Option 2: Claim Insurance Form -->
+            <div>
+                <form action="{{ url_for('claim_insurance', appointment_id=apt.id) }}" method="POST">
+                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                        <label for="insurance_company_id" style="margin-bottom: 0;">Select Insurance:</label>
+                        <select name="insurance_company_id" id="insurance_company_id" required style="width: 250px;">
+                            <option value="" disabled selected>-- Select Company --</option>
+                            {% for company in insurance_companies %}
+                                <option value="{{ company.id }}">{{ company.company_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn-secondary">Submit Claim (Simulated)</button>
+                    </div>
+                </form>
+            </div>
+
         </div>
     </div>
 

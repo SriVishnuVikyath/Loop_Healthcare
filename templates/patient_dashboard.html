@@ -52,7 +52,17 @@
                         {% if apt.bill_status == 'Unpaid' %}
                             <a href="{{ url_for('pay_bill', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; padding: 10px 15px; border-radius: 6px;">Pay Bill</a>
                         {% elif apt.bill_status == 'Pending Insurance' %}
-                            <span style="font-weight: 600; color: #666;">(Pending Insurance)</span>
+                            <!-- UPDATED: Show detailed claim status -->
+                            <span style="font-weight: 600; color: #666;">
+                                {% if apt.insurance_claim_status == 'Pending' %}
+                                    (Pending with {{ apt.insurance_company.company_name }})
+                                {% elif apt.insurance_claim_status == 'Rejected' %}
+                                    <span style="color: #dc3545;">(Claim Rejected by {{ apt.insurance_company.company_name }})</span>
+                                    <a href="{{ url_for('pay_bill', appointment_id=apt.id) }}" class="btn" style="text-decoration: none; padding: 10px 15px; border-radius: 6px; margin-left: 10px;">Pay Bill</a>
+                                {% else %}
+                                    (Processing...)
+                                {% endif %}
+                            </span>
                         {% endif %}
                     </div>
                 </div>
