@@ -25,6 +25,56 @@
         </div>
     </div>
     
+    <!-- NEW: Your Appointments Card (Simplified) -->
+    <div class="card">
+        <div class="card-header">Your Appointments</div>
+        
+        {% set upcoming_apts = appointments|selectattr('status', 'in', ['Pending', 'Confirmed'])|list %}
+        {% set past_apts = appointments|selectattr('status', 'in', ['Cancelled', 'Completed'])|list %}
+
+        {% if upcoming_apts %}
+            <h4 style="padding: 15px 15px 0 15px;">Upcoming Appointments</h4>
+            {% for apt in upcoming_apts %}
+                <div class="d-flex justify-between align-center" style="padding: 10px 15px; border-bottom: 1px solid #eee;">
+                    <div>
+                        <b>{{ apt.doctor.full_name }}</b> ({{ apt.doctor.specialty }})<br>
+                        <small>Time: {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}</small>
+                    </div>
+                    <div>
+                        {% if apt.status == 'Pending' %}
+                            <span style="font-weight: 600; color: #666;">(Pending Doctor Approval)</span>
+                        {% elif apt.status == 'Confirmed' %}
+                            <span style="font-weight: 600; color: green;">(Confirmed)</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+        
+        {% if past_apts %}
+            <h4 style="padding: 15px 15px 0 15px; margin-top: 10px;">Past/Cancelled Appointments</h4>
+            {% for apt in past_apts %}
+                <div class="d-flex justify-between align-center" style="padding: 10px 15px; border-bottom: 1px solid #eee;">
+                    <div>
+                        <b>{{ apt.doctor.full_name }}</b> ({{ apt.doctor.specialty }})<br>
+                        <small>Time: {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}</small>
+                    </div>
+                    <div>
+                        {% if apt.status == 'Cancelled' %}
+                            <span style="font-weight: 600; color: #dc3545;">(Cancelled by Doctor)</span>
+                        {% elif apt.status == 'Completed' %}
+                             <span style="font-weight: 600; color: #007bff;">(Completed)</span>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if not upcoming_apts and not past_apts %}
+            <p style="padding: 0 15px 15px 15px;">You have no appointments.</p>
+        {% endif %}
+    </div>
+
     <!-- Doctor Search (Unchanged) -->
     <div class="card">
         <div class="card-header">Find a Doctor</div>

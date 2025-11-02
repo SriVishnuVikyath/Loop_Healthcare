@@ -336,6 +336,10 @@ def patient_dashboard():
                            doctors_to_review=doctors_to_review,
                            appointments=all_appointments) # <-- Pass all appointments for billing
 
+# --- REMOVED: Route for patient to accept/reject appointment ---
+# (The entire 'patient_appointment_action' route has been deleted)
+
+
 # --- NEW: Bill Payment Routes ---
 
 @app.route("/pay_bill/<int:appointment_id>", methods=['GET'])
@@ -712,13 +716,18 @@ def doctor_dashboard():
     # ... (This route is unchanged) ...
     appointments = g.profile.appointments.order_by(Appointment.appointment_time.asc()).all()
     pending_apts = [a for a in appointments if a.status == 'Pending']
+    # --- REMOVED: waiting_patient_apts ---
     confirmed_apts = [a for a in appointments if a.status == 'Confirmed']
     completed_apts = [a for a in appointments if a.status == 'Completed']
+    # --- UPDATED: Show simple cancelled appointments ---
+    cancelled_apts = [a for a in appointments if a.status == 'Cancelled']
     
     return render_template('doctor_dashboard.html', 
                            pending_apts=pending_apts, 
+                           # --- REMOVED: waiting_patient_apts ---
                            confirmed_apts=confirmed_apts,
-                           completed_apts=completed_apts)
+                           completed_apts=completed_apts,
+                           cancelled_apts=cancelled_apts) # <-- UPDATED
 
 # --- NEW: Route to manage availability ---
 @app.route("/manage_availability", methods=['POST'])
@@ -770,14 +779,20 @@ def appointment_action(appointment_id, action):
         return redirect(url_for('doctor_dashboard'))
 
     if action == 'confirm':
+        # --- UPDATED: Change status directly to 'Confirmed' ---
         apt.status = 'Confirmed'
         flash(f'Appointment with {apt.patient.full_name} confirmed.', 'success')
     elif action == 'cancel':
+        # --- UPDATED: Be more specific about cancellation ---
         apt.status = 'Cancelled'
         flash(f'Appointment with {apt.patient.full_name} cancelled.', 'info')
     elif action == 'complete':
-        apt.status = 'Completed'
-        flash(f'Appointment with {apt.patient.full_name} marked as completed.', 'success')
+        # --- UPDATED: Only allow completing fully confirmed appointments ---
+        if apt.status != 'Confirmed':
+             flash(f'This appointment is not in a confirmed state.', 'danger')
+        else:
+            apt.status = 'Completed'
+            flash(f'Appointment with {apt.patient.full_name} marked as completed.', 'success')
     else:
         flash('Invalid action.', 'danger')
 
@@ -949,7 +964,7 @@ def get_file(filename):
     
     medical_file = db.session.scalar(db.select(MedicalFile).where(MedicalFile.filename == filename))
     if not medical_file:
-        abort(404)
+        abort(44)
 
     is_authorized = False
     if current_user.role == 'patient':
@@ -1036,3 +1051,5 @@ def forbidden(e):
 # --- Run the App ---
 if __name__ == '__main__':
     app.run(debug=True)
+
+

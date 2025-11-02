@@ -43,6 +43,8 @@
         {% endfor %}
     </div>
 
+    <!-- REMOVED: Card for appointments waiting for patient -->
+
     <div class="card">
         <div class="card-header">Confirmed Appointments</div>
         {% for apt in confirmed_apts %}
@@ -107,4 +109,24 @@
             <p>No completed appointments.</p>
         {% endfor %}
     </div>
+
+    <!-- UPDATED: Card for cancelled appointments -->
+    <div class="card">
+        <div class="card-header">Cancelled Appointments</div>
+        {% for apt in cancelled_apts %}
+             <div class="d-flex justify-between align-center" style="padding: 10px; border-bottom: 1px solid #eee;">
+                <div>
+                    <b>{{ apt.patient.full_name }}</b><br>
+                    {{ apt.appointment_time.strftime('%Y-%m-%d %I:%M %p') }}
+                </div>
+                <div>
+                    <!-- Simplified status -->
+                    <span style="font-weight: 600; color: #dc3545;">(Cancelled)</span>
+                </div>
+            </div>
+        {% else %}
+            <p>No cancelled appointments.</p>
+        {% endfor %}
+    </div>
 {% endblock %}
+
