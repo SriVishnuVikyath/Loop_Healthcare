@@ -5,6 +5,26 @@
 
     <hr>
     
+    <!-- NEW: Your Profile Card -->
+    <div class="card">
+        <div class="card-header">Your Profile</div>
+        <div style="padding: 15px;">
+            <p><strong>Phone:</strong> {{ g.profile.phone or 'Not set' }}</p>
+            <p><strong>Address:</strong> {{ g.profile.address or 'Not set' }}</p>
+            <p><strong>Insurance Details:</strong>
+                {% if g.profile.insurance_company %}
+                    <span style="display: block; margin-left: 20px;">
+                        <strong>Company:</strong> {{ g.profile.insurance_company.company_name }}<br>
+                        <strong>Policy ID:</strong> {{ g.profile.insurance_policy_id }}
+                    </span>
+                {% else %}
+                    <span style="color: #666;">No insurance on file.</span>
+                {% endif %}
+            </p>
+            <!-- Add an Edit Profile button here later if needed -->
+        </div>
+    </div>
+    
     <!-- Doctor Search (Unchanged) -->
     <div class="card">
         <div class="card-header">Find a Doctor</div>
@@ -62,6 +82,15 @@
                                 {% else %}
                                     (Processing...)
                                 {% endif %}
+                            </span>
+                        {% elif apt.bill_status == 'Paid' %}
+                            <!-- UPDATED: Show detailed paid status -->
+                            <span style="font-weight: 600; color: green;">
+                                (Paid
+                                {% if apt.insurance_claim_status == 'Accepted' %}
+                                    via {{ apt.insurance_company.company_name }}
+                                {% endif %}
+                                )
                             </span>
                         {% endif %}
                     </div>

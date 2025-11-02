@@ -56,6 +56,10 @@ class PatientProfile(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     
+    # --- NEW: Insurance Details for Patient ---
+    insurance_policy_id = db.Column(db.String(100), nullable=True)
+    insurance_company_id = db.Column(db.Integer, db.ForeignKey('insurance_profile.id'), nullable=True)
+    
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
     
     records = db.relationship('MedicalRecord', backref='patient', lazy='dynamic', foreign_keys='MedicalRecord.patient_id')
@@ -65,6 +69,10 @@ class PatientProfile(db.Model):
     
     permitted_doctors = db.relationship('DoctorProfile', secondary=patient_doctor_permissions,
         back_populates='permitted_patients')
+    
+    # --- NEW: Relationship to their insurance company ---
+    insurance_company = db.relationship('InsuranceProfile', foreign_keys=[insurance_company_id])
+
 
 class DoctorProfile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -80,7 +88,6 @@ class DoctorProfile(db.Model):
     availability_start_time = db.Column(db.Time) # e.g., 09:00:00
     availability_end_time = db.Column(db.Time)   # e.g., 17:00:00
     slot_duration_minutes = db.Column(db.Integer, default=30)
-    # --- REMOVED: max_appointments_per_day (no longer needed) ---
     
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
     
@@ -211,7 +218,18 @@ def register():
         db.session.commit()
 
         if role == 'patient':
-            profile = PatientProfile(full_name=full_name, phone=phone, address=address, pincode=pincode, user_id=new_user.id)
+            # --- NEW: Get optional insurance info ---
+            policy_id = request.form.get('insurance_policy_id')
+            company_id = request.form.get('insurance_company_id')
+            profile = PatientProfile(
+                full_name=full_name, 
+                phone=phone, 
+                address=address, 
+                pincode=pincode, 
+                user_id=new_user.id,
+                insurance_policy_id=policy_id if policy_id else None,
+                insurance_company_id=int(company_id) if company_id else None
+            )
         elif role == 'doctor':
             # --- UPDATED: Set default availability ---
             profile = DoctorProfile(
@@ -240,7 +258,9 @@ def register():
             db.session.commit()
             return redirect(url_for('register'))
 
-    return render_template('register.html')
+    # --- NEW: Get insurance companies for dropdown ---
+    insurance_companies = db.session.scalars(db.select(InsuranceProfile)).all()
+    return render_template('register.html', insurance_companies=insurance_companies)
 
 
 @app.route("/login", methods=['GET', 'POST'])
@@ -329,12 +349,12 @@ def pay_bill(appointment_id):
         abort(403) # Not this patient's bill
     if apt.bill_status != 'Unpaid':
         flash('This bill is not currently marked as unpaid.', 'info')
+    if apt.bill_status not in ['Unpaid', 'Rejected']: # <-- Allow payment if Unpaid or Rejected
+        flash('This bill is not currently marked as unpaid.', 'info')
         return redirect(url_for('patient_dashboard'))
     
-    # --- NEW: Get all insurance companies to list them ---
-    insurance_companies = db.session.scalars(db.select(InsuranceProfile)).all()
-    
-    return render_template('pay_bill.html', apt=apt, insurance_companies=insurance_companies)
+    # --- REMOVED: No longer need to query all companies ---
+    return render_template('pay_bill.html', apt=apt)
 
 @app.route("/pay_upi/<int:appointment_id>")
 @login_required
@@ -347,7 +367,7 @@ def pay_upi(appointment_id):
     if apt.patient_id != g.profile.id:
         abort(403)
     
-    if apt.bill_status == 'Unpaid':
+    if apt.bill_status in ['Unpaid', 'Rejected']: # <-- Allow payment if Unpaid or Rejected
         apt.bill_status = 'Paid'
         db.session.commit()
         flash('Payment successful! Thank you.', 'success')
@@ -360,33 +380,33 @@ def pay_upi(appointment_id):
 @login_required
 @role_required('patient')
 def claim_insurance(appointment_id):
-    """Simulates submitting a claim to insurance."""
+    """Submits a claim if the entered Policy ID matches the patient's file."""
     apt = db.session.get(Appointment, appointment_id)
     if not apt:
         abort(404)
     if apt.patient_id != g.profile.id:
         abort(403)
     
-    # --- NEW: Get the selected insurance company ID from the form ---
-    insurance_company_id = request.form.get('insurance_company_id')
-    if not insurance_company_id:
-        flash('You must select an insurance company.', 'danger')
-        return redirect(url_for('pay_bill', appointment_id=appointment_id))
+    # --- NEW: Validate against the patient's registered policy ID ---
+    submitted_policy_id = request.form.get('insurance_policy_id')
 
-    company = db.session.get(InsuranceProfile, int(insurance_company_id))
-    if not company:
-        flash('Selected insurance company not found.', 'danger')
+    if not g.profile.insurance_policy_id or not g.profile.insurance_company_id:
+        flash('You do not have an insurance policy registered on your profile.', 'danger')
         return redirect(url_for('pay_bill', appointment_id=appointment_id))
-    # --- END NEW ---
+        
+    if submitted_policy_id != g.profile.insurance_policy_id:
+        flash('The Policy ID you entered does not match the ID on your profile.', 'danger')
+        return redirect(url_for('pay_bill', appointment_id=appointment_id))
+    # --- END NEW VALIDATION ---
     
-    if apt.bill_status == 'Unpaid':
+    if apt.bill_status in ['Unpaid', 'Rejected']:
         apt.bill_status = 'Pending Insurance'
-        apt.insurance_id = company.id # <-- NEW: Link claim to company
+        apt.insurance_id = g.profile.insurance_company_id # <-- NEW: Link claim to patient's company
         apt.insurance_claim_status = 'Pending' # <-- NEW: Set claim status
         db.session.commit()
-        flash(f'Bill claim submitted to {company.company_name} for processing.', 'info')
+        flash(f'Bill claim submitted to {g.profile.insurance_company.company_name} for processing.', 'info')
     else:
-        flash('This bill is not currently marked as unpaid.', 'info')
+        flash('This bill cannot be claimed at this time.', 'info')
         
     return redirect(url_for('patient_dashboard'))
 

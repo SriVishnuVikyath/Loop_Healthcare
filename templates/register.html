@@ -38,6 +38,27 @@
             <label for="specialty">Specialty</label>
             <input type="text" id="specialty" name="specialty" placeholder="e.g., Cardiologist">
         </div>
+
+        <!-- NEW: Optional Insurance Fields for Patient -->
+        <div id="patient-insurance-fields">
+            <fieldset style="border: 1px solid #ccc; padding: 10px; border-radius: 6px; margin-bottom: 20px;">
+                <legend style="padding: 0 5px; width: auto; font-size: 1rem;">Optional Insurance Details</legend>
+                <div class="form-group">
+                    <label for="insurance_company_id">Insurance Company</label>
+                    <select id="insurance_company_id" name="insurance_company_id">
+                        <option value="">-- None --</option>
+                        {% for company in insurance_companies %}
+                            <option value="{{ company.id }}">{{ company.company_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="insurance_policy_id">Policy ID</label>
+                    <input type="text" id="insurance_policy_id" name="insurance_policy_id" placeholder="e.g., ABC123456">
+                </div>
+            </fieldset>
+        </div>
+        
         <button type="submit" class="btn">Register</button>
     </form>
 
@@ -46,19 +67,26 @@
             const specialtyField = document.getElementById('specialty-field');
             const fullNameLabel = document.getElementById('full_name_label');
             const addressLabel = document.getElementById('address_label');
+            const insuranceFields = document.getElementById('patient-insurance-fields'); // <-- NEW
+
             if (role === 'doctor') {
                 specialtyField.style.display = 'block';
+                insuranceFields.style.display = 'none'; // <-- NEW
                 fullNameLabel.textContent = 'Full Name';
                 addressLabel.textContent = 'Practice Address';
             } else if (role === 'insurance') {
                 specialtyField.style.display = 'none';
+                insuranceFields.style.display = 'none'; // <-- NEW
                 fullNameLabel.textContent = 'Company Name';
                 addressLabel.textContent = 'Company Address';
             } else {
                 specialtyField.style.display = 'none';
+                insuranceFields.style.display = 'block'; // <-- NEW
                 fullNameLabel.textContent = 'Full Name';
                 addressLabel.textContent = 'Address';
             }
         }
+        // Initialize fields on page load
+        toggleDoctorFields(document.getElementById('role').value);
     </script>
 {% endblock %}

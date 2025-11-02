@@ -1,16 +1,23 @@
 {% extends 'layout.html' %}
 {% block content %}
-    <h1>Pay Bill</h1>
-    <p>You are about to pay a bill for a completed appointment.</p>
-
-    <div class="card" style="max-width: 600px;">
+    <h2>Pay Bill</h2>
+    <p>You are paying a bill for an appointment with <strong>{{ apt.doctor.full_name }}</strong> on {{ apt.appointment_time.strftime('%Y-%m-%d') }}.</p>
+    
+    <div class="card" style="max-width: 600px; margin-bottom: 20px; background-color: #fdfdf0;">
         <div class="card-header">Bill Details</div>
-        <div style="padding: 15px;">
-            <p style="font-size: 1.2rem;"><b>Doctor:</b> {{ apt.doctor.full_name }} ({{ apt.doctor.specialty }})</p>
-            <p style="font-size: 1.2rem;"><b>Service:</b> {{ apt.bill_description or 'Consultation' }}</p>
-            <p style="font-size: 1.5rem; font-weight: bold;"><b>Amount Due:</b> ${{ "%.2f"|format(apt.bill_amount) }}</p>
-        </div>
+        <p style="padding: 15px; margin: 0;">
+            <strong>Description:</strong> {{ apt.bill_description or 'No Description' }}<br>
+            <strong>Amount Due:</strong> <span style="font-size: 1.2rem; font-weight: 600;">${{ "%.2f"|format(apt.bill_amount) }}</span>
+        </p>
     </div>
+
+    <!-- NEW: Show if claim was rejected -->
+    {% if apt.insurance_claim_status == 'Rejected' %}
+        <div class="alert alert-danger">
+            <strong>Your insurance claim was REJECTED.</strong><br>
+            You are responsible for paying the full amount.
+        </div>
+    {% endif %}
 
     <div class="card" style="max-width: 600px;">
         <div class="card-header">Choose Payment Method</div>
@@ -24,24 +31,27 @@
             </div>
             
             <!-- Option 2: Claim Insurance Form -->
+            <!-- UPDATED: This form now takes a policy ID -->
             <div>
                 <form action="{{ url_for('claim_insurance', appointment_id=apt.id) }}" method="POST">
-                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
-                        <label for="insurance_company_id" style="margin-bottom: 0;">Select Insurance:</label>
-                        <select name="insurance_company_id" id="insurance_company_id" required style="width: 250px;">
-                            <option value="" disabled selected>-- Select Company --</option>
-                            {% for company in insurance_companies %}
-                                <option value="{{ company.id }}">{{ company.company_name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="submit" class="btn-secondary">Submit Claim (Simulated)</button>
-                    </div>
+                    {% if g.profile.insurance_company %}
+                        <div class="form-group" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px;">
+                            <label for="insurance_policy_id" style="margin-bottom: 0;">
+                                Confirm Your Policy ID for <strong>{{ g.profile.insurance_company.company_name }}</strong>:
+                            </label>
+                            <input type="text" name="insurance_policy_id" id="insurance_policy_id" style="width: 250px;" required>
+                            <button type="submit" class="btn-secondary">Submit Claim with Policy ID</button>
+                        </div>
+                    {% else %}
+                        <p style="color: #666;">You do not have an insurance policy on file. Please update your profile to submit a claim.</p>
+                    {% endif %}
                 </form>
             </div>
 
         </div>
     </div>
 
-    <a href="{{ url_for('patient_dashboard') }}" style="margin-top: 20px; display: inline-block;">Cancel and go back</a>
+    <a href="{{ url_for('patient_dashboard') }}" style="margin-top: 20px; display: inline-block;">Back to Dashboard</a>
 
 {% endblock %}
+

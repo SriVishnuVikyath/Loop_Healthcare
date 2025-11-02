@@ -164,7 +164,16 @@ def create_fake_data():
     user_p = User(email=email, password_hash=hashed_password, role='patient')
     db.session.add(user_p)
     db.session.commit()
-    profile_p = PatientProfile(full_name="Test Patient", phone="1234567890", address="123 Test St", pincode="10001", user_id=user_p.id)
+    profile_p = PatientProfile(
+        full_name="Test Patient", 
+        phone="1234567890", 
+        address="123 Test St", 
+        pincode="10001", 
+        user_id=user_p.id,
+        # --- NEW: Assign test patient to Mediclaim ---
+        insurance_company_id=profile_m.id,
+        insurance_policy_id="MED12345"
+    )
     db.session.add(profile_p)
     
     # Add one easy-to-test doctor
@@ -213,7 +222,7 @@ def create_fake_data():
     
     db.session.commit()
     print("Added test patient (patient@test.com) and test doctor (doctor@test.com). Password for both is 'password'.")
-    print("Added a completed, unpaid bill for 'Test Patient'.")
+    print("Added a completed, unpaid bill for 'Test Patient' (Policy: MED12345 with Mediclaim).")
 
 
 if __name__ == "__main__":
@@ -234,4 +243,5 @@ if __name__ == "__main__":
             clear_database()
             create_fake_data()
         print("Database 'site.db' created and populated.")
+
 

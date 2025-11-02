@@ -72,7 +72,7 @@
                 <div style="min-width: 350px; text-align: right;">
                     <a href="{{ url_for('update_record', patient_id=apt.patient.id) }}" class="btn-secondary" style="text-decoration: none; padding: 12px 20px; border-radius: 6px; margin-right: 5px;">View History</a>
                     
-                    <!-- NEW: Billing Logic -->
+                    <!-- CLEANED UP: This is the single, inline billing logic -->
                     {% if apt.bill_status == 'Unbilled' %}
                         <form action="{{ url_for('set_bill', appointment_id=apt.id) }}" method="POST" style="display: inline-flex; gap: 5px; margin-left: 5px;">
                             <input type="number" step="0.01" name="bill_amount" placeholder="$ Amount" style="width: 80px; padding: 10px;" required>
@@ -96,44 +96,12 @@
                             {% if apt.insurance_claim_status == 'Accepted' %}(via {{ apt.insurance_company.company_name }}){% endif %})
                         </span>
                     {% endif %}
-                    <!-- END NEW: Billing Logic -->
+                    <!-- END BILLING LOGIC -->
 
                 </div>
             </div>
             
-            <!-- NEW: Billing Management Section -->
-            <div style="background-color: #fdfdf0; padding: 10px; border-bottom: 1px solid #eee;">
-                {% if apt.bill_status == 'Unbilled' %}
-                    <!-- Form to create a new bill -->
-                    <form action="{{ url_for('set_bill', appointment_id=apt.id) }}" method="POST" class="d-flex align-center">
-                        <div class="form-group" style="margin: 0 5px; flex-grow: 1;">
-                            <input type="number" name="bill_amount" placeholder="Amount (e.g., 150.00)" step="0.01" min="0.01" required style="width: 100%; padding: 8px;">
-                        </div>
-                        <div class="form-group" style="margin: 0 5px; flex-grow: 2;">
-                            <input type="text" name="bill_description" placeholder="Description (e.g., Consultation)" required style="width: 100%; padding: 8px;">
-                        </div>
-                        <button type="submit" class="btn" style="padding: 8px 12px;">Send Bill</button>
-                    </form>
-                {% elif apt.bill_status == 'Unpaid' %}
-                    <!-- Show unpaid status and 'Mark as Paid' button -->
-                    <div class="d-flex justify-between align-center">
-                        <div>
-                            <p style="margin: 0;"><b>Bill Unpaid:</b> ${{ "%.2f"|format(apt.bill_amount) }}</p>
-                            <small style="color: #555;">{{ apt.bill_description }}</small>
-                        </div>
-                        <a href="{{ url_for('bill_action', appointment_id=apt.id, action='pay') }}" class="btn-secondary" style="text-decoration: none; padding: 8px 12px;">Mark as Paid</a>
-                    </div>
-                {% elif apt.bill_status == 'Paid' %}
-                    <!-- Show paid status -->
-                    <div class="d-flex justify-between align-center">
-                        <div>
-                            <p style="margin: 0; color: green;"><b>Bill Paid:</b> ${{ "%.2f"|format(apt.bill_amount) }}</p>
-                            <small style="color: #555;">{{ apt.bill_description }}</small>
-                        </div>
-                    </div>
-                {% endif %}
-            </div>
-            <!-- END NEW SECTION -->
+            <!-- REMOVED: The redundant billing management section that was here -->
 
         {% else %}
             <p>No completed appointments.</p>
